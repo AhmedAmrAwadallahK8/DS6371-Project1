@@ -1,0 +1,306 @@
+---
+title: "Obj2.2: Nonparametric Model"
+author: "Leonardo Leal Filho"
+date: '2022-05-29'
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(tidyverse)
+library(WDI)
+library(countrycode)
+library(GGally)
+library(class)
+```
+
+```{r}
+#Change working directory to this source file directory
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+```
+
+```{r}
+LifeExpecFilePath = "../Datasets/LifeExpectancyData.csv"
+df <- read.csv(LifeExpecFilePath)
+```
+
+## Checking the data
+
+```{r}
+dim(df)
+summary(df)
+```
+## Checking the features with NA values and how many NA values each has
+
+```{r}
+# Creating an empty vector to collect the features that have NA values
+na.feat <- c()
+
+# Looping through the dataset to collect the features with NA values
+for (i in names(df)) {
+  if (sum(is.na(df[,i])) > 0) {
+    na.feat <- c(na.feat, i)
+  }
+}
+
+# Making an empty dataframe to store the names of the features with NA values and how many NA values they have
+na.count <- data.frame(Features = na.feat, Count = numeric(length(na.feat)))
+
+# Looping through the dataset to collect the count of NA values those features have 
+for (i in 1:length(na.feat)) {
+  na.count[i, 2] <- sum(is.na(df[, na.feat[i]]))
+}
+
+# Checking the na.count dataframe
+na.count
+```
+
+## Removing some rows with NA values
+
+```{r}
+# Finding the rows of "thinnes..1.19.years" that contains NA values
+n1 <- which(is.na(df$thinness..1.19.years))
+# Removing the rows
+df <- df[-n1,]
+```
+
+```{r}
+# Creating an empty vector to collect the features that have NA values
+na.feat <- c()
+
+# Looping through the dataset to collect the features with NA values
+for (i in names(df)) {
+  if (sum(is.na(df[,i])) > 0) {
+    na.feat <- c(na.feat, i)
+  }
+}
+
+# Making an empty dataframe to store the names of the features with NA values and how many NA values they have
+na.count <- data.frame(Features = na.feat, Count = numeric(length(na.feat)))
+
+# Looping through the dataset to collect the count of NA values those features have 
+for (i in 1:length(na.feat)) {
+  na.count[i, 2] <- sum(is.na(df[, na.feat[i]]))
+}
+
+# Checking the na.count dataframe
+na.count
+```
+
+
+```{r}
+# Finding the rows of "Polio" that contains NA values
+n1 <- which(is.na(df$Polio))
+# Removing the rows
+df <- df[-n1,]
+```
+
+```{r}
+# Creating an empty vector to collect the features that have NA values
+na.feat <- c()
+
+# Looping through the dataset to collect the features with NA values
+for (i in names(df)) {
+  if (sum(is.na(df[,i])) > 0) {
+    na.feat <- c(na.feat, i)
+  }
+}
+
+# Making an empty dataframe to store the names of the features with NA values and how many NA values they have
+na.count <- data.frame(Features = na.feat, Count = numeric(length(na.feat)))
+
+# Looping through the dataset to collect the count of NA values those features have 
+for (i in 1:length(na.feat)) {
+  na.count[i, 2] <- sum(is.na(df[, na.feat[i]]))
+}
+
+# Checking the na.count dataframe
+na.count
+```
+lastly I will remove the rows that contains missing values for the "Adult.Mortality" feature.
+
+```{r}
+# Finding the rows of "Adult.Mortality" that contains NA values
+n1 <- which(is.na(df$Adult.Mortality))
+# Removing the rows
+df <- df[-n1,]
+```
+
+```{r}
+# Creating an empty vector to collect the features that have NA values
+na.feat <- c()
+
+# Looping through the dataset to collect the features with NA values
+for (i in names(df)) {
+  if (sum(is.na(df[,i])) > 0) {
+    na.feat <- c(na.feat, i)
+  }
+}
+
+# Making an empty dataframe to store the names of the features with NA values and how many NA values they have
+na.count <- data.frame(Features = na.feat, Count = numeric(length(na.feat)))
+
+# Looping through the dataset to collect the count of NA values those features have 
+for (i in 1:length(na.feat)) {
+  na.count[i, 2] <- sum(is.na(df[, na.feat[i]]))
+}
+
+# Checking the na.count dataframe
+na.count
+```
+
+
+```{r}
+dim(df)
+```
+There are now 2888 observations left in the dataset, a loss of about 1.7% of the original amount of observations.  The goal from now on is to find ways to input the missing values to the dataset.
+
+The population feature, which is the feature that gives us the information of the country's total population count, is the feature that has the most missing values (NAs).  Since the information comes per country per year, one way to solve this issue is to use the World Bank Database package, which contains this information as well as the GDP information, Hepatitis B and Total Expenditure.
+
+I will start by acquiring the population data, but the actual first step will be to input the abreviation of the countries in a new column to make it easier to grab the other missing information.
+
+
+```{r}
+na.count
+```
+### I will now remove the features that have missing data left.  
+
+### I will also remove the "Country" feature because since 50 rows were removed from the dataset, some countries may not be fully represented, if at all.  This means making prediction based on countries may not yield any results due to the country not being in the training of the model.
+
+### The "Year" feature will also be removed because I am not planning to build a time series model.  Using the "Year" feature would mean that any prediction would be for a Year that is not within the actual dataset, which means the model would not have been trained on that value so it would extrapolate.
+```{r}
+# Removing the features that have 160 or more NA values plus the "Country" and "Year" features.
+df2 <- df %>% select(!c(na.count$Features, "Country", "Year"))
+```
+
+
+```{r}
+dim(df2)
+str(df2)
+```
+### The only non numerical feature left is the "Status" feature.  Let me check how many factors are in that feature and what are they.
+
+
+```{r}
+# Transforming the "Status" feature from a character to a factor feature
+df2$Status <- as.factor(df2$Status)
+
+# Checking how the "Status" feature is now
+summary(df2$Status)
+```
+```{r}
+# Status feature boxplot
+df2 %>% ggplot(aes(x = Life.expectancy, fill = Status)) + geom_boxplot() + xlab("Life Expectancy")
+# Status feature histogram
+df2 %>% ggplot(aes(x = Life.expectancy, fill = Status)) + geom_histogram(bins = 15) + facet_wrap(~Status) + xlab("Life Expectancy")
+```
+### The summary shows there are two factors in the "Status" feature: Developed and Developing.  The histograms do not show any strong evidence against normality.  With that in mind, I will perform a Welch's t-test to see if there is a difference in the mean Life Expectancy between the Developed status vs. the Developing status.
+
+```{r}
+Developed <- df[df$Status == "Developed",]$Life.expectancy
+Developing <- df[df$Status == "Developing",]$Life.expectancy
+t.test(Developed, Developing)
+```
+### The t-test results indicate that there is overwhelming evidence that the mean life expectancy from developed countries is not the same as the mean life expectancy of developing country.  The results also shows, with 95% confidence, that the mean life expectance from developed countries is approximately between 11.47 to 12.47 years longer than the mean life expectance of the developing countries.  These results are great to keep in mind when picking the features to implement in the model.
+
+### In order to use the Status feature, I will create a dummy feature called "Developed" to replace it with a numeric feature.  The values in the "Developed" feature will be 1 if the "Status" is "Developed" or 0 if the "Status" is Developing.
+```{r}
+# Creating a "Developed" feature
+df2$Developed <- ifelse(df$Status == "Developed", 1, 0)
+# Dropping the "Status" feature
+df2 <- df2 %>% select(!Status)
+```
+
+### The knn regression model will take the average value of the k nearest neighbors.  To find features that will produce neighbors that can best predict the life expectancy, I will use the correlation value each feature has to the Life.expectancy.  The stronger the correlation, the better.
+
+```{r}
+# library with ggpairs
+library(GGally)
+
+# Creating a new dataframe just to be able to change the features' titles
+df3 <- df2
+
+# Changing the features' titles just so that they can best fit the ggpairs graph
+names(df3) <- c("Life expectancy",  "Adult Mortality", "infant deaths", 
+                "percentage expenditure", "Measles", "BMI", "under five deaths", 
+                "Polio", "Diphtheria", "HIV AIDS", "thinness 10 - 19 years", 
+                "thinness 5 - 9 years", "Developed")
+
+# Creating the ggpairs graph
+ggpairs(df3, labeller = label_wrap_gen(8))
+```
+
+```{r}
+# Creating a correlation dataframe
+c <- data.frame(cor(df2))
+# Checking the correlation dataframe where the absolute correlation from Life.expectancy is above 0.4
+c[abs(c$Life.expectancy) > 0.4,]
+```
+
+```{r}
+# Setting a seed to make it replicable
+set.seed(1)
+
+# Making an 80-20 train-test split
+# Randomly selecting the indexes for the training set 
+train.index <- sample(dim(df2)[1], dim(df2)[1] * 0.80)
+
+# Creating the training set using the train.index
+train <- df2[train.index,]
+
+# Creating the testing set
+test <- df2[-train.index,]
+```
+
+
+```{r}
+# library with trainControl, train, RMSE, and MAE
+library(caret)
+
+# Creating a control variable to implement a 5 fold cross validation
+fitControl <- trainControl(method = "cv", number = 5)
+
+# Creating a knn model that will choose between 1 to 15 values for the "k" neighbors from which to take the mean.
+knn.model <- train(Life.expectancy ~ Developed + Adult.Mortality + BMI + HIV.AIDS + thinness..1.19.years + thinness.5.9.years, 
+                    method = "knn", tuneGrid = expand.grid(k = 1:15), data = train, trControl = fitControl)
+
+# Checking the model
+knn.model
+
+# Creating a test.x1 data set with only the variable used in the creation of the model, without the response variable.
+test.x <- test %>% select(!Life.expectancy)
+test.x <- test %>% select(Developed, Adult.Mortality, BMI, HIV.AIDS, thinness..1.19.years, thinness.5.9.years)
+
+# Making predictions with the testing data
+knn.pred <- predict(knn.model, test.x)
+
+RMSE(knn.pred, test$Life.expectancy)
+MAE(knn.pred, test$Life.expectancy)
+```
+
+```{r}
+# library with tree
+library(tree)
+
+# Tree Model
+tree.model <- tree(Life.expectancy ~ ., data = train)
+summary(tree.model)
+```
+
+```{r}
+# Plotting the tree model and its nodes
+plot(tree.model)
+text(tree.model)
+```
+
+```{r}
+# Building a dataset with only the predictors from the test dataset
+test.x <- test %>% select(-Life.expectancy)
+# Making the prediction using the regression tree model
+tree.pred <- predict(tree.model, test.x)
+
+# Checking the RMSE and MAE from the predicted model
+RMSE(tree.pred, test$Life.expectancy)
+MAE(tree.pred, test$Life.expectancy)
+```

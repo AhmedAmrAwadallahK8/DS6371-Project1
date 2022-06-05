@@ -1,0 +1,303 @@
+---
+title: "Obj1: Interpretable Linear Model"
+author: "Luke"
+date: "5/30/2022"
+output: html_document
+---
+
+```{r}
+#import statements, obtain data, change integers to numeric
+#1
+library(naniar)
+library(magrittr)
+library(ggplot2)
+library(e1071)
+library(dplyr)
+library(caret)
+library(class)
+library(tidyverse)
+library(ModelMetrics)
+library(fpp2)
+library(investr)
+library(car)
+
+#Change working directory to this source file directory
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+
+#2 get the data
+LifeExpecFilePath = "../Datasets/Life_Expectancy_Data_Imputed.csv"
+mydata <- read.table(LifeExpecFilePath, sep = ",", fill=TRUE, header = TRUE)
+
+#3 make integers numeric
+mydata$Year <- as.numeric(mydata$Year)
+mydata$Adult.Mortality <- as.numeric(mydata$Adult.Mortality)
+mydata$infant.deaths <- as.numeric(mydata$infant.deaths)
+mydata$under.five.deaths <- as.numeric(mydata$under.five.deaths)
+mydata$Measles <- as.numeric(mydata$Measles)
+mydata$Hepatitis.B <- as.numeric(mydata$Hepatitis.B)
+mydata$Polio <- as.numeric(mydata$Polio)
+mydata$Diphtheria <- as.numeric(mydata$Diphtheria)
+```
+
+
+```{r}
+#use this code to iteratively go through and remove collinear variables one by one based on VIF.
+#full model
+fit = lm(Life.expectancy~Country+Year+Adult.Mortality+Alcohol+percentage.expenditure+Hepatitis.B+Measles+BMI+Polio+Total.expenditure+Diphtheria+GDP+Population+infant.deaths+under.five.deaths+thinness..1.19.years+thinness.5.9.years+Income.composition.of.resources+Schooling+HIV.AIDS, data=mydata)
+summary(fit)
+
+#check VIF values
+vif(fit)[,3]^2
+
+#add or remove variables here
+fit = lm(Life.expectancy~Country+Year+Adult.Mortality+Alcohol+percentage.expenditure+Hepatitis.B+Measles+BMI+Polio+Total.expenditure+Diphtheria+Population+thinness.5.9.years+Income.composition.of.resources+HIV.AIDS, data=mydata)
+```
+
+```{r}
+#EDA NOTES:
+
+#thinness 1.19years and thinness5.9 years are so highly correlated that we will remove one.
+#same for income.composition.of.resources and schooling
+#same for infant mortality and under 5 deaths. We will keep under 5 deaths because it encompasses infant mortality
+#possible correlation between Dripheria and Polio
+
+
+#scatter plot matrix
+pairs(mydata[,  c(2, 4:10)])
+pairs(mydata[,  c(4, 11:16)])
+pairs(mydata[,  c(4, 17:22)])
+
+#blowing up potential collinear predictor variables
+plot(mydata$thinness..1.19.years, mydata$thinness.5.9.years)
+plot(mydata$Income.composition.of.resources, mydata$Schooling)
+plot(mydata$under.five.deaths, mydata$infant.deaths)
+plot(mydata$Polio, mydata$Diphtheria)
+
+#show percentage NA for each column
+(colMeans(is.na(mydata)))*100
+```
+
+```{r}
+#######################################################################
+# LASSO
+#######################################################################
+library(glmnet)
+
+#4 drop NA rows (.3% of rows so we can run variable selection)
+mydata <- mydata %>% drop_na(Life.expectancy)
+#is.na(mydata$Life.expectancy)
+
+#create training and test set
+set.seed(1234)
+trainIndicies = sample(1:dim(mydata)[1], round(.85 * dim(mydata)[1]))
+dataTrain =  mydata[trainIndicies,]
+dataTest  =  mydata[-trainIndicies,]
+
+#define response variable
+y <- dataTrain$Life.expectancy
+
+#define matrix of predictor variables
+x <- data.matrix(dataTrain[, c( 'Year', 'Adult.Mortality', 'Alcohol', 'percentage.expenditure', 'Hepatitis.B', 'Measles', 'BMI', 'Polio', 'Total.expenditure', 'Diphtheria',  'HIV.AIDS', 'Population', 'thinness..1.19.years', 'thinness.5.9.years', 'Income.composition.of.resources')])
+
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(x, y, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+
+#find coefficients of best model
+best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda)
+coef(best_model)
+
+#define new observation
+new = data.matrix(dataTest[, c( 'Year', 'Adult.Mortality', 'Alcohol', 'percentage.expenditure', 'Hepatitis.B', 'Measles', 'BMI', 'Polio', 'Total.expenditure', 'Diphtheria',  'HIV.AIDS',  'Population', 'thinness..1.19.years', 'thinness.5.9.years', 'Income.composition.of.resources')]) 
+
+#use lasso regression model to predict response value
+predict(best_model, s = best_lambda, newx = new)
+
+#use fitted best model to make predictions
+y_predicted <- predict(best_model, s = best_lambda, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+rsq
+
+#ASE 28.57659
+ase <- sse/nrow(y_predicted)
+ase
+
+#########################################
+#final model R^2 = 0.8304, RMSE = 3.88, test ASE = 15.29
+#########################################
+fit = lm(Life.expectancy~Year+Adult.Mortality+percentage.expenditure+Income.composition.of.resources+Measles+log(Polio)+Diphtheria+log(HIV.AIDS), data=dataTrain)
+summary(fit)
+
+#95% confidence intervals for our predictors in our model
+confint(fit, level = 0.95)
+
+# RMSE = 3.883
+rmse(fit)
+
+#residual plots
+plot(fit)
+
+fit.res = fit$residuals
+
+#histogram of residuals
+hist(fit.res)
+m<-mean(fit.res)
+std<-sqrt(var(fit.res))
+curve(dnorm(x, mean=m, sd=std), col="darkblue", lwd=2, add=TRUE, yaxt="n")
+
+#need this to calculate average squared error (ASE)
+dataTest <- drop_na(dataTest)
+
+predictions <- fit %>% predict(dataTest)
+
+#calculate test ASE -- 15.29156
+ase <- mean(((dataTest$Life.expectancy) - predictions)^2)
+ase
+
+#plot predictions vs actual values
+plot(dataTest$Life.expectancy, predictions, main = "Predicted vs Actual Life Expectancy", xlab = "Actual Life Expectancy", ylab = "Predicted Life Expectancy")
+
+```
+
+
+
+```{r,echo=T}
+###############################################################
+# forward selection
+###############################################################
+#library(leaps)
+library(dplyr)
+#library(ISLR)
+library(olsrr)
+
+#4 drop NA rows (.3% of  rows so we can run variable selection)
+mydata <- mydata %>% drop_na(Life.expectancy)
+
+#create 15/85 train/test set
+set.seed(1234)
+trainIndicies = sample(1:dim(mydata)[1], round(.85 * dim(mydata)[1]))
+train =  mydata[trainIndicies,]
+test  =  mydata[-trainIndicies,]
+
+#full model minus the four very highly correlated variables
+fit = lm(Life.expectancy~Country+Year+Adult.Mortality+Alcohol+percentage.expenditure+Hepatitis.B+Measles+BMI+Polio+Total.expenditure+Diphtheria+Population+thinness.5.9.years+Income.composition.of.resources+HIV.AIDS, data=mydata)
+
+#ols_step_forward_p(fit, penter = .001, details = TRUE)
+
+#ols_step_both_p(fit, pent = .001, prem = .001, details = TRUE)
+
+
+#regression using forward selected predictors this one RSE 4.594, R^2 0.7635
+fit <- lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Year+HIV.AIDS+Diphtheria+Measles, data = train)
+summary(fit)
+
+##regression using stepwise selected predictors RSE 4.805, R^2 0.7372
+#fit <- lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Year+HIV.AIDS, data = mydata)
+#summary(fit)
+
+#need this to calculate average squared error (ASE)
+test <- drop_na(test)
+
+predictions <- fit %>% predict(test)
+
+#calculate test ASE --- 20.55349
+ase <- mean(((dataTest$Life.expectancy) - predictions)^2)
+ase
+
+#plot predictions vs actual values
+plot(test$Life.expectancy, predictions, main = "Predicted vs Actual Life Expectancy", xlab = "Actual Life Expectancy", ylab = "Predicted Life Expectancy")
+
+#residuals plot
+plot(fit)
+
+fit.res = fit$residuals
+
+#histogram of residuals
+hist(fit.res)
+m<-mean(fit.res)
+std<-sqrt(var(fit.res))
+curve(dnorm(x, mean=m, sd=std), col="darkblue", lwd=2, add=TRUE, yaxt="n")
+
+
+```
+
+#extra EDA code if needed
+```{r}
+#compare each of these correlated variables to life expectancy to find the one to keep in the model
+#logging either variable or both doesn't help anything.. logging both might help the model a little but not really
+plot(mydata$Life.expectancy, mydata$Polio)        
+#logging either variable or both doesn't help anything.. logging both might help the model a little but not really
+plot(mydata$Life.expectancy, mydata$Diphtheria)   
+
+#logging either variable or both doesn't help anything.. logging both might help the model a little but not really
+plot(mydata$Life.expectancy, mydata$under.five.deaths)        
+#logging either variable or both doesn't help anything.. logging both might help the model a little but not really
+plot(mydata$Life.expectancy, mydata$infant.deaths)            
+
+#logging income.composition.of.resources fixes the weird data gathering at the bottom of the plot so we will keep that in the model
+plot(mydata$Life.expectancy, log(mydata$Income.composition.of.resources))        
+#income.composition.of.resources and schooling are highly correlated and so we will let the variable selection method pick which one we should keep. I am leaning towards keeping only income.composition.of.resources though.
+plot(mydata$Life.expectancy, log(mydata$Schooling))                               
+
+#logging either variable or both doesn't help anything.. logging both might help the model a little but not really.  we will let the variable selection algorithm  decide which one is better of if we should keep either variables.
+plot(mydata$Life.expectancy, mydata$thinness.5.9.years)
+#logging either variable or both doesn't help anything.. logging both might help the model a little but not really
+plot(mydata$Life.expectancy, mydata$thinness..1.19.years)
+
+plot(mydata$Life.expectancy, mydata$Year)
+
+plot(log(mydata$Life.expectancy), log(mydata$Adult.Mortality))
+plot(mydata$Life.expectancy, mydata$percentage.expenditure)
+plot(mydata$Life.expectancy, mydata$Measles)
+plot(mydata$Life.expectancy, mydata$under.five.deaths)
+plot(mydata$Life.expectancy, mydata$HIV.AIDS)
+
+
+#check assumption of independence
+library(car)
+durbinWatsonTest(fit)
+
+#couldn't figure out how to impute the missing data per column using means by country so I am doing it manually
+
+#mydata$Alcohol[is.na(mydata$Alcohol)] <- mean()
+#mydata$BMI[mydata$BMI==""] <- mean()
+#mydata$Diphtheria[mydata$City==""] <- mean()
+#mydata$Total.expenditure[mydata$City==""] <- mean()
+#mydata$Polio[mydata$City==""] <- mean()
+#mydata$thinness.5.9.years[mydata$City==""] <- mean()
+#mydata$thinness..1.19.years[mydata$City==""] <- mean()
+#mydata$Schooling[mydata$City==""] <- mean()
+#mydata$Income.composition.of.resources[mydata$City==""] <- mean()
+#identifies which row contains NA
+mydata[is.na(mydata$Adult.Mortality), ]
+mydata[is.na(mydata$Alcohol), ]
+mydata[is.na(mydata$BMI), ]
+mydata[is.na(mydata$Diphtheria), ]
+mydata[is.na(mydata$Total.expenditure), ]
+mydata[is.na(mydata$Polio), ]
+mydata[is.na(mydata$thinness.5.9.years), ]
+mydata[is.na(mydata$thinness..1.19.years), ]
+mydata[is.na(mydata$Schooling), ]
+mydata[is.na(mydata$Income.composition.of.resources), ]
+
+
+#drop NA rows for rows with 10% or more data missing
+#mydata <- mydata[!(is.na(mydata$Alcohol) | mydata$Alcohol==""), ]
+mydata <- mydata[!(is.na(mydata$Hepatitis.B) | mydata$Hepatitis.B==""), ]
+#mydata <- mydata[!(is.na(mydata$Total.expenditure) | mydata$Total.expenditure==""), ]
+mydata <- mydata[!(is.na(mydata$Population) | mydata$Population==""), ]
+mydata <- mydata[!(is.na(mydata$GDP) | mydata$GDP==""), ]
+
+```

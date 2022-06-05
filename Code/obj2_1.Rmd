@@ -1,0 +1,569 @@
+---
+title: "Obj2.1: Complex Linear Model"
+author: "Ahmed Awadallah"
+output: html_document
+date: '2022-06-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup Libs
+
+```{r, warning=FALSE, message=FALSE}
+library(magrittr)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(GGally)
+library(car)
+library(glmnet)
+library(reshape2)
+
+#Change working directory to this source file directory
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+
+#Load my custom functions
+source("personal_funcs.r")
+```
+
+## NA Row Removal Impact Analysis
+
+Most of these Countriess lose all their data except for 2
+
+```{r , echo=FALSE, message=FALSE}
+#Extract
+LifeExpecFilePath = "../Datasets/LifeExpectancyData.csv"
+LifeExpecRaw<-read.csv(LifeExpecFilePath)
+
+#Gain some perspective on the data we are removing
+variablesToExclude = c("Total.expenditure", "Schooling", "Population", "Income.composition.of.resources",
+                       "Hepatitis.B", "GDP", "Alcohol")
+
+LifeExpecNA = LifeExpecRaw %>% select(-variablesToExclude)
+
+#Check the countrys that experienced the most NA rows
+LifeExpecNA = get_na_df(LifeExpecNA)
+#NA Count by Country plot
+LifeExpecNA %>% ggplot(aes(y = Country)) + geom_bar() +
+  xlab("Number of Rows Removed") +
+  ggtitle("Amount of Rows Removed by Country")
+
+NaCountries = c("Tuvalu", "Timor-Leste", "Sudan", "South Sudan", "San Marino", "Saint Kitts and Nevis", 
+                "Palau", "Niue", "Nauru", "Montenegro", "Monaco", "Marshall Islands", "Dominica", "Cook Islands")
+#Orginal amount of data present before NA removal
+LifeExpecRaw[LifeExpecRaw$Country %in% NaCountries,] %>% ggplot(aes(y = Country)) + geom_bar() +
+  xlab("Number of Rows Total") +
+  ggtitle("Amount of Rows in Raw Dataset by Country")
+
+#Country data remaining after removing NAs plot setup
+NaCountryCount = as.data.frame(table(LifeExpecNA$Country))
+CountryCount = as.data.frame(table(LifeExpecRaw[LifeExpecRaw$Country %in% NaCountries,]$Country))
+CountryCount$RowsRemaining = CountryCount$Freq - NaCountryCount$Freq 
+
+#Remaining Data for Country plot
+CountryCount %>% ggplot(aes(y = Var1, x = RowsRemaining)) + geom_col() + 
+  ylab("Country") + ggtitle("Rows Left in Model Dataset After Removal by Country")
+```
+
+## Remove NAs, Adjust Variable Types, and Standardize Data
+
+```{r, message=FALSE}
+#Remove High NA Features and Clean Data
+#High NA vars have More than 5% missing
+#Country is not included as the name of a country should not be a useful factor in prediction, the countriess
+#Life expectancy is determined by their policies not a string of characters
+variablesWithHighNa = c("Total.expenditure", "Schooling", "Population", "Income.composition.of.resources",
+                        "Hepatitis.B", "GDP", "Alcohol", "Country") 
+LifeExpecClean = LifeExpecRaw %>% select(-variablesWithHighNa)
+
+#RemoveNAs
+LifeExpecClean$Status = as.factor(LifeExpecClean$Status)
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(Life.expectancy))
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(BMI))
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(Adult.Mortality))
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(Diphtheria))
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(Polio))
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(thinness..1.19.years))
+LifeExpecClean = LifeExpecClean %>% filter(!is.na(thinness.5.9.years))
+
+#How much of the original dataset did we remove: around 1%
+PercentDataRemoved = (dim(LifeExpecRaw)[1] - dim(LifeExpecClean)[1])/dim(LifeExpecRaw)[1]*100
+cat("Percent of data removed: ", PercentDataRemoved)
+cat("Exact Number of Rows Removed: ", dim(LifeExpecRaw)[1] - dim(LifeExpecClean)[1])
+
+#Adjusting variable types
+LifeExpecClean$Year = as.numeric(LifeExpecClean$Year)
+LifeExpecClean$Adult.Mortality = as.numeric(LifeExpecClean$Adult.Mortality)
+LifeExpecClean$infant.deaths = as.numeric(LifeExpecClean$infant.deaths)
+LifeExpecClean$Measles = as.numeric(LifeExpecClean$Measles)
+LifeExpecClean$under.five.deaths = as.numeric(LifeExpecClean$under.five.deaths)
+LifeExpecClean$Polio = as.numeric(LifeExpecClean$Polio)
+LifeExpecClean$Diphtheria = as.numeric(LifeExpecClean$Diphtheria)
+
+#Verify no NAs
+LifeExpecClean %>% 
+  summarise(across(everything(), ~ sum(is.na(.x)))/2938*100) %>%
+  gather(Column, NA_Count) %>%
+  ggplot(aes(x=NA_Count, y=Column, fill = Column)) + geom_col() + 
+  ylab("Feature") + xlab("Na Value Percent") + 
+  ggtitle("Feature by NA Count")
+
+#Transform a feature prior to standardization as it will report NA values if we dont do it now
+LifeExpecClean$LogOneOverHIV.AIDS = log(1/LifeExpecClean$HIV.AIDS)
+LifeExpecCleanS = LifeExpecClean
+#Standardize
+vars = c("Year", "Life.expectancy", "Adult.Mortality", "infant.deaths", 
+         "percentage.expenditure", "Measles", "BMI", "under.five.deaths",
+         "Polio", "Diphtheria", "HIV.AIDS", "thinness..1.19.year", "thinness.5.9.years",
+         "LogOneOverHIV.AIDS")
+LifeExpecClean = get_standardized_df(LifeExpecClean, vars)
+```
+
+## Train Val Test Setup
+
+```{r, message=FALSE}
+#Train Validation Test Setup
+set.seed(1)
+testSplitPercent = 0.9
+trainTestList = get_train_test_list(LifeExpecClean, testSplitPercent)
+
+trainValIndex = 1
+testIndex = 2
+TrainVal = trainTestList[[trainValIndex]]
+Test = trainTestList[[testIndex]]
+
+testRows = dim(Test)[1]
+trainValRows = dim(TrainVal)[1]
+
+valSplitPercent = 1 - (testRows/trainValRows)
+trainValList = get_train_test_list(TrainVal, valSplitPercent)
+
+trainIndex = 1
+valIndex = 2
+Train = trainValList[[trainIndex]]
+Val = trainValList[[valIndex]]
+```
+
+## Model 1: No adjustment
+
+```{r, message=FALSE}
+##Model 1: Everything that doesnt have excessive NA values is in the model
+
+#Var Selection
+variablesToRemove = c("LogOneOverHIV.AIDS") #Transformed feature is used later
+Train1 = Train %>% select(-variablesToRemove)
+Val1 = Val %>% select(-variablesToRemove)
+
+#LM Model
+linearModel1 = lm(Life.expectancy ~., data = Train1)
+
+#Model Stats
+summary(linearModel1)
+
+#Assumption Check
+par(mfrow=c(2,2))
+plot(linearModel1)
+par(mfrow=c(1,1))
+vif(linearModel1)^2
+
+#Model Performance Stats:
+Predictions = predict(linearModel1, Val1)
+ase1 = get_ase(Predictions, Val1$Life.expectancy)
+cat("ASE: ", ase1)
+cat("AIC: ", AIC(linearModel1))
+
+
+```
+
+## LASSO: Feature Selection
+
+```{r, message=FALSE}
+Train1Features = Train1
+Train1Features = model.matrix(Life.expectancy~.,Train1Features)[,-1]
+Train1Target = Train1$Life.expectancy
+
+Val1Features = Val1
+Val1Features = model.matrix(Life.expectancy~.,Val1Features)[,-1]
+Val1Target = Val1$Life.expectancy
+
+grid=10^seq(10,-2, length =100)
+lasso.mod=glmnet(Train1Features,Train1Target,alpha=1, lambda =grid)
+cv.out=cv.glmnet(Train1Features,Train1Target,alpha=1) #alpha=1 performs LASSO
+plot(cv.out)
+
+bestlambda<-cv.out$lambda.min
+lasso.pred=predict (lasso.mod ,s=bestlambda ,newx=Val1Features)
+
+testMSE_LASSO<-mean((Val1Target-lasso.pred)^2)
+cat("MSE: ", testMSE_LASSO)
+
+coef(lasso.mod,s=bestlambda)
+
+```
+
+infant.deaths and thinness.5.9.years have no significant coefficient so remove
+these two features and move forward with the model process.
+
+## Model 2: Insignificant Lasso Terms Removed
+
+```{r, message=FALSE}
+##Model 2: Remove features lasso found useless
+#Use coef to remove terms
+#Remove:
+#infant.deaths: 0
+#thinness.5.9.years: 0
+
+#Post Lasso Var Selection
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "LogOneOverHIV.AIDS")
+Train2 = Train %>% select(-variablesToRemove)
+Val2 = Val %>% select(-variablesToRemove)
+
+#LM Model
+linearModel2 = lm(Life.expectancy ~., data = Train2)
+
+#Model Stats
+summary(linearModel2)
+
+#Assumption Check
+par(mfrow=c(2,2))
+plot(linearModel2)
+par(mfrow=c(1,1))
+vif(linearModel2)^2 
+
+```
+
+## Model 3: Use Complex Features to Improve the Model
+
+```{r, message=FALSE}
+##Model 3: Now create a complex model to help explain the data more
+#Now deal with polynomial behavior
+#Variables polynoial behavior profiles
+  #Year: Linear, x
+  #Status: Categorical (Not adjusted)
+  #percentage.expenditure: 1 vertex even: X^2
+  #Adult.Mortality: Nonlinear 1 vertex even: x^2
+  #BMI: Nonlinear 3 vertices even: x^4
+  #Measles: Nonlinear mostly 1 vertex even: x^2
+  #under.five.deaths: Nonlinear 3 vertices even: x^4
+  #Polio: Nonlinear 2 Vertices odd: X^3
+  #Diphtheria: Nonlinear 2 vertices odd: x^3
+  #HIV.AIDS: Nonlinear: 1/x then log to prevent normalization issues
+  #thinness..1.19.years: Nonlinear 3 vertices even: X^4
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS")
+Train3 = Train %>% select(-variablesToRemove)
+Val3 = Val %>% select(-variablesToRemove)
+
+linearModel3 = lm(Life.expectancy ~ Year + Status + 
+                    Adult.Mortality + Adult.Mortality^2 +
+                    percentage.expenditure + percentage.expenditure^2 +
+                    BMI + BMI^2 + BMI^3 + BMI^4 +
+                    Measles + Measles^2 +
+                    under.five.deaths + under.five.deaths^2 + under.five.deaths^3 + under.five.deaths^4 + 
+                    Polio + Polio^2 + Polio^3 +
+                    Diphtheria + Diphtheria^2 + Diphtheria^3 + 
+                    LogOneOverHIV.AIDS + #This transformation was done prior to standardization so just call the feature
+                    thinness..1.19.years + thinness..1.19.years^2 + thinness..1.19.years^3 + thinness..1.19.years^4,
+                  data = Train3)
+
+#Model Stats
+summary(linearModel3) #Now under.five.deaths no longer significant. Remove
+
+
+#Assumption Check
+par(mfrow=c(2,2))
+plot(linearModel3)
+par(mfrow=c(1,1))
+vif(linearModel3)^2
+
+```
+
+## Model 4: Remove the Year Feature
+
+Year probably violates independence assumption of our model so it's being
+removed here and a new model is trained without it.
+
+```{r, message=FALSE}
+##Model 4: Remove a serial feature
+#Years is technically time dependent but our analysis assumes no time dependence. Try a model without years
+
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS", "Year")
+Train4 = Train %>% select(-variablesToRemove)
+Val4 = Val %>% select(-variablesToRemove)
+
+linearModel4 = lm(Life.expectancy ~ Status + 
+                    Adult.Mortality + Adult.Mortality^2 +
+                    percentage.expenditure + percentage.expenditure^2 +
+                    BMI + BMI^2 + BMI^3 + BMI^4 +
+                    Measles + Measles^2 +
+                    under.five.deaths + under.five.deaths^2 + under.five.deaths^3 + under.five.deaths^4 + 
+                    Polio + Polio^2 + Polio^3 +
+                    Diphtheria + Diphtheria^2 + Diphtheria^3 + 
+                    LogOneOverHIV.AIDS + #This transformation was done prior to standardization so just call the feature
+                    thinness..1.19.years + thinness..1.19.years^2 + thinness..1.19.years^3 + thinness..1.19.years^4,
+                  data = Train4)
+
+#Model Stats
+summary(linearModel4) #under.five.deaths not significant. Remove
+
+#Assumption Check
+par(mfrow=c(2,2))
+plot(linearModel4)
+par(mfrow=c(1,1))
+vif(linearModel4)^2
+
+```
+
+## Model 5: Remove under.five.deaths
+
+under.five.deaths is no longer a significant term in the model so remove it
+
+```{r, message=FALSE}
+#Model 5. under.five.deaths removed as it is not a significant term
+
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS", "Year", "under.five.deaths")
+Train5 = Train %>% select(-variablesToRemove)
+Val5 = Val %>% select(-variablesToRemove)
+
+linearModel5 = lm(Life.expectancy ~ Status + 
+                    Adult.Mortality + Adult.Mortality^2 +
+                    percentage.expenditure + percentage.expenditure^2 +
+                    BMI + BMI^2 + BMI^3 + BMI^4 +
+                    Measles + Measles^2 +
+                    Polio + Polio^2 + Polio^3 +
+                    Diphtheria + Diphtheria^2 + Diphtheria^3 + 
+                    LogOneOverHIV.AIDS + 
+                    thinness..1.19.years + thinness..1.19.years^2 + thinness..1.19.years^3 + thinness..1.19.years^4,
+                  data = Train5)
+
+#Model Stats
+summary(linearModel5)
+
+#Assumption Check
+par(mfrow=c(2,2))
+plot(linearModel5)
+par(mfrow=c(1,1))
+vif(linearModel5)^2
+
+```
+
+## Model Average Loop
+
+Get AIC and Validation set ASE from multiple iterations to get a good average
+for all the models. These average stats are then compared to select a model.
+
+```{r, message=FALSE}
+#Compare all models using multiple train validation splits to average out randomness
+#Var Setup
+modelIterations = 500 #The larger this term the more time this takes
+aseModel1 = 0
+aseModel2 = 0
+aseModel3 = 0
+aseModel4 = 0
+aseModel5 = 0
+aicModel1 = 0
+aicModel2 = 0
+aicModel3 = 0
+aicModel4 = 0
+aicModel5 = 0
+
+#Loop creates a train validation split then evaluates the ase and AIC. Do this 
+#modelIterations amount of times and average result.
+for(i in 1:modelIterations){
+  #Train Validation Setup
+  trainValList = get_train_test_list(TrainVal, valSplitPercent)
+  trainIndex = 1
+  valIndex = 2
+  
+  Train = trainValList[[trainIndex]]
+  Val = trainValList[[valIndex]]
+  
+  #Train Val dataframes for each model
+  variablesToRemove = c("LogOneOverHIV.AIDS")
+  Train1 = Train %>% select(-variablesToRemove)
+  Val1 = Val %>% select(-variablesToRemove)
+  
+  variablesToRemove = c("infant.deaths", "thinness.5.9.years", "LogOneOverHIV.AIDS")
+  Train2 = Train %>% select(-variablesToRemove)
+  Val2 = Val %>% select(-variablesToRemove)
+  
+  variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS")
+  Train3 = Train %>% select(-variablesToRemove)
+  Val3 = Val %>% select(-variablesToRemove)
+  
+  variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS", "Year")
+  Train4 = Train %>% select(-variablesToRemove)
+  Val4 = Val %>% select(-variablesToRemove)
+  
+  variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS", "Year", "under.five.deaths")
+  Train5 = Train %>% select(-variablesToRemove)
+  Val5 = Val %>% select(-variablesToRemove)
+  
+  
+  
+  #Models
+  linearModel1 = lm(Life.expectancy ~., data = Train1)
+  linearModel2 = lm(Life.expectancy ~., data = Train2)
+
+  linearModel3 = lm(Life.expectancy ~ Year + Status + 
+                      Adult.Mortality + Adult.Mortality^2 +
+                      percentage.expenditure + percentage.expenditure^2 +
+                      BMI + BMI^2 + BMI^3 + BMI^4 + 
+                      Measles + Measles^2 +
+                      under.five.deaths + under.five.deaths^2 + under.five.deaths^3 + under.five.deaths^4 +
+                      Polio + Polio^2 + Polio^3 +
+                      Diphtheria + Diphtheria^2 + Diphtheria^3 + 
+                      LogOneOverHIV.AIDS + 
+                      thinness..1.19.years + thinness..1.19.years^2 + thinness..1.19.years^3 + thinness..1.19.years^4,
+                    data = Train3)
+  linearModel4 = lm(Life.expectancy ~ Status + 
+                      Adult.Mortality + Adult.Mortality^2 +
+                      percentage.expenditure + percentage.expenditure^2 +
+                      BMI + BMI^2 + BMI^3 + BMI^4 +
+                      Measles + Measles^2 +
+                      under.five.deaths + under.five.deaths^2 + under.five.deaths^3 + under.five.deaths^4 +
+                      Polio + Polio^2 + Polio^3 +
+                      Diphtheria + Diphtheria^2 + Diphtheria^3 + 
+                      LogOneOverHIV.AIDS + 
+                      thinness..1.19.years + thinness..1.19.years^2 + thinness..1.19.years^3 + thinness..1.19.years^4,
+                    data = Train4)
+  
+  linearModel5 = lm(Life.expectancy ~ Status + 
+                      Adult.Mortality + Adult.Mortality^2 +
+                      percentage.expenditure + percentage.expenditure^2 +
+                      BMI + BMI^2 + BMI^3 + BMI^4 +
+                      Measles + Measles^2 +
+                      Polio + Polio^2 + Polio^3 +
+                      Diphtheria + Diphtheria^2 + Diphtheria^3 + 
+                      LogOneOverHIV.AIDS + 
+                      thinness..1.19.years + thinness..1.19.years^2 + thinness..1.19.years^3 + thinness..1.19.years^4,
+                    data = Train5)
+  
+  #Get ase for each model
+  #M1
+  Predictions = predict(linearModel1, Val1)
+  ase = get_ase(Predictions, Val1$Life.expectancy)
+  aseModel1 = aseModel1 + ase
+  
+  #M2
+  Predictions = predict(linearModel2, Val2)
+  ase = get_ase(Predictions, Val2$Life.expectancy)
+  aseModel2 = aseModel2 + ase
+  
+  #M3
+  Predictions = predict(linearModel3, Val3)
+  ase = get_ase(Predictions, Val3$Life.expectancy)
+  aseModel3 = aseModel3 + ase
+  
+  #M4
+  Predictions = predict(linearModel4, Val4)
+  ase = get_ase(Predictions, Val4$Life.expectancy)
+  aseModel4 = aseModel4 + ase
+  
+  #M5
+  Predictions = predict(linearModel5, Val5)
+  ase = get_ase(Predictions, Val5$Life.expectancy)
+  aseModel5 = aseModel5 + ase
+  
+  #Get AIC
+  aicModel1 = aicModel1 + AIC(linearModel1)
+  aicModel2 = aicModel2 + AIC(linearModel2)
+  aicModel3 = aicModel3 + AIC(linearModel3)
+  aicModel4 = aicModel4 + AIC(linearModel4)
+  aicModel5 = aicModel5 + AIC(linearModel5)
+}
+
+#Average Everything
+aseModel1 = aseModel1/modelIterations
+aseModel2 = aseModel2/modelIterations
+aseModel3 = aseModel3/modelIterations
+aseModel4 = aseModel4/modelIterations
+aseModel5 = aseModel5/modelIterations
+aicModel1 = aicModel1/modelIterations
+aicModel2 = aicModel2/modelIterations
+aicModel3 = aicModel3/modelIterations
+aicModel4 = aicModel4/modelIterations
+aicModel5 = aicModel5/modelIterations
+
+#Test dataframes for each model
+variablesToRemove = c("LogOneOverHIV.AIDS")
+Test1 = Test %>% select(-variablesToRemove)
+
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "LogOneOverHIV.AIDS")
+Test2 = Test %>% select(-variablesToRemove)
+
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS")
+Test3 = Test %>% select(-variablesToRemove)
+
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS", "Year")
+Test4 = Test %>% select(-variablesToRemove)
+
+variablesToRemove = c("infant.deaths", "thinness.5.9.years", "HIV.AIDS", "Year", "under.five.deaths")
+Test5 = Test %>% select(-variablesToRemove)
+
+#Get Test ASE
+Predictions = predict(linearModel1, Test1)
+ase1 = get_ase(Predictions, Test1$Life.expectancy)
+
+Predictions = predict(linearModel2, Test2)
+ase2 = get_ase(Predictions, Test2$Life.expectancy)
+
+Predictions = predict(linearModel3, Test3)
+ase3 = get_ase(Predictions, Test3$Life.expectancy)
+
+Predictions = predict(linearModel4, Test4)
+ase4 = get_ase(Predictions, Test4$Life.expectancy)
+
+Predictions = predict(linearModel5, Test5)
+ase5 = get_ase(Predictions, Test5$Life.expectancy)
+
+#Unstandardized version of final model ASE
+Predictions = predict(linearModel5, Test5)
+UnstandardizedPredictions = Predictions*sd(LifeExpecCleanS$Life.expectancy) + mean(LifeExpecCleanS$Life.expectancy)
+UnstandardizedTargets = Test5$Life.expectancy*sd(LifeExpecCleanS$Life.expectancy) + mean(LifeExpecCleanS$Life.expectancy)
+ase5Unstandardized = get_ase(UnstandardizedPredictions, UnstandardizedTargets)
+
+#TrainVal ASE AIC Scores Table Setup
+modelNum = c(1:5)
+trainAIC = c(aicModel1, aicModel2, aicModel3, aicModel4, aicModel5)
+valASE = c(aseModel1, aseModel2, aseModel3, aseModel4, aseModel5)
+testASE = c(ase1, ase2, ase3, ase4, ase5)
+testASEUnstandard = c(NA, NA, NA, NA, ase5Unstandardized)
+modelCompareDf = data.frame(modelNum = modelNum, trainAIC = trainAIC, valASE = valASE, testASE = testASE, testASEUnstandard = testASEUnstandard)
+
+
+```
+
+## Model Comparison Table
+
+```{r, message=FALSE, echo=FALSE}
+modelCompareDf
+```
+
+## Final Model Stats
+
+Technically best model is model 3 but this had serial behavior present which 
+may break our models independence assumption. We will take a score hit for doing this
+but our variables now better align with assumptions of our model giving us more 
+confidence in our results as a benefit. The next best model is model 5 as its AIC score
+and its ASE is less than the rest. Use LM5 for final report
+
+#### Summary
+
+```{r, message=FALSE, echo=FALSE}
+summary(linearModel5)
+```
+
+#### True v Predicted Scatter
+
+```{r, message=FALSE, echo=FALSE}
+plot(predict(linearModel5, Test5), Test5$Life.expectancy, 
+     xlab = "Predictions", ylab = "Targets", main = "Targets v Predictions")
+```
+
+#### AIC, Validation ASE, Test ASE, and Test ASE Unstandardized
+
+```{r, message=FALSE, echo=FALSE}
+modelCompareDf[5,]
+```
