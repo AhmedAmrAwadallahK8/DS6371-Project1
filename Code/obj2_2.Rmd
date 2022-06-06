@@ -9,14 +9,11 @@ editor_options:
 
 ```{r}
 library(tidyverse)
-library(WDI)
-library(countrycode)
 library(GGally)
 library(class)
 ```
 
 ```{r}
-#Change working directory to this source file directory
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 ```
 
@@ -153,17 +150,10 @@ na.count
 
 ```{r}
 dim(df)
+
+data.frame(cor(df[,c("Life.expectancy", na.count$Features)]))
 ```
-There are now 2888 observations left in the dataset, a loss of about 1.7% of the original amount of observations.  The goal from now on is to find ways to input the missing values to the dataset.
 
-The population feature, which is the feature that gives us the information of the country's total population count, is the feature that has the most missing values (NAs).  Since the information comes per country per year, one way to solve this issue is to use the World Bank Database package, which contains this information as well as the GDP information, Hepatitis B and Total Expenditure.
-
-I will start by acquiring the population data, but the actual first step will be to input the abreviation of the countries in a new column to make it easier to grab the other missing information.
-
-
-```{r}
-na.count
-```
 ### I will now remove the features that have missing data left.  
 
 ### I will also remove the "Country" feature because since 50 rows were removed from the dataset, some countries may not be fully represented, if at all.  This means making prediction based on countries may not yield any results due to the country not being in the training of the model.
@@ -212,7 +202,7 @@ df2$Developed <- ifelse(df$Status == "Developed", 1, 0)
 df2 <- df2 %>% select(!Status)
 ```
 
-### The knn regression model will take the average value of the k nearest neighbors.  To find features that will produce neighbors that can best predict the life expectancy, I will use the correlation value each feature has to the Life.expectancy.  The stronger the correlation, the better.
+### A non parametric model does not require a linear relationship between response and explanatory vairables.  With that being said, explanatory variables that have a strong correlation to the response variable may be more useful to make predictions on new data.
 
 ```{r}
 # library with ggpairs
@@ -235,7 +225,7 @@ ggpairs(df3, labeller = label_wrap_gen(8))
 # Creating a correlation dataframe
 c <- data.frame(cor(df2))
 # Checking the correlation dataframe where the absolute correlation from Life.expectancy is above 0.4
-c[abs(c$Life.expectancy) > 0.4,]
+c[abs(c$Life.expectancy) > 0.4,] %>% select(Life.expectancy)
 ```
 
 ```{r}
@@ -255,8 +245,47 @@ test <- df2[-train.index,]
 
 
 ```{r}
+# library with tree function for the regression tree model
+library(tree)
+
+# Regression Tree Model
+tree.model <- tree(Life.expectancy ~ ., data = train)
+summary(tree.model)
+```
+
+
+
+```{r}
+# Plotting the tree model and its nodes
+plot(tree.model)
+text(tree.model)
+
+```
+
+
+```{r}
 # library with trainControl, train, RMSE, and MAE
 library(caret)
+```
+
+
+```{r}
+# Building a dataset with only the predictors from the test dataset
+test.x <- test %>% select(-Life.expectancy)
+# Making the prediction using the regression tree model
+tree.pred <- predict(tree.model, test.x)
+
+# Checking the RMSE and MAE from the predicted model
+rmse <- RMSE(tree.pred, test$Life.expectancy)
+mae <- MAE(tree.pred, test$Life.expectancy)
+ase <- RMSE(tree.pred, test$Life.expectancy)^2
+tree.results <- data.frame(RMSE = rmse, MAE = mae, ASE = ase)
+tree.results
+```
+
+```{r}
+# Setting seed to make model replicable due to the cross validation
+set.seed(1)
 
 # Creating a control variable to implement a 5 fold cross validation
 fitControl <- trainControl(method = "cv", number = 5)
@@ -264,10 +293,10 @@ fitControl <- trainControl(method = "cv", number = 5)
 # Creating a knn model that will choose between 1 to 15 values for the "k" neighbors from which to take the mean.
 knn.model <- train(Life.expectancy ~ Developed + Adult.Mortality + BMI + HIV.AIDS + thinness..1.19.years + thinness.5.9.years, 
                     method = "knn", tuneGrid = expand.grid(k = 1:15), data = train, trControl = fitControl)
-
 # Checking the model
 knn.model
-
+```
+```{r}
 # Creating a test.x1 data set with only the variable used in the creation of the model, without the response variable.
 test.x <- test %>% select(!Life.expectancy)
 test.x <- test %>% select(Developed, Adult.Mortality, BMI, HIV.AIDS, thinness..1.19.years, thinness.5.9.years)
@@ -280,27 +309,30 @@ MAE(knn.pred, test$Life.expectancy)
 ```
 
 ```{r}
-# library with tree
-library(tree)
+# Retrieving the RMSE, Rsquared, MAE for each of the k values
+knn.Results <- knn.model$results %>% select(k, RMSE, Rsquared, MAE)
 
-# Tree Model
-tree.model <- tree(Life.expectancy ~ ., data = train)
-summary(tree.model)
+# Creating the ASE by squaring the RMSE
+knn.Results$ASE <- knn.Results$RMSE^2
+
+# Checking the results table
+knn.Results
 ```
 
-```{r}
-# Plotting the tree model and its nodes
-plot(tree.model)
-text(tree.model)
-```
 
 ```{r}
-# Building a dataset with only the predictors from the test dataset
-test.x <- test %>% select(-Life.expectancy)
-# Making the prediction using the regression tree model
-tree.pred <- predict(tree.model, test.x)
+# Creating a dataframe with the Actual and Predicted values for the testing set
+res <- data.frame(Actual = test$Life.expectancy, Predicted = knn.pred)
 
-# Checking the RMSE and MAE from the predicted model
-RMSE(tree.pred, test$Life.expectancy)
-MAE(tree.pred, test$Life.expectancy)
+# Calculating the residuals by subtracting the Predicted from the Actual
+res$Residuals <- res$Actual - res$Predicted
+
+# Squaring the Residual values
+res$Squared.Residuals <- res$Residuals^2
+
+# Taking the Average of the Squared Residuals
+ASE <- mean(res$Squared.Residuals)
+
+# Checking the ASE
+ASE
 ```

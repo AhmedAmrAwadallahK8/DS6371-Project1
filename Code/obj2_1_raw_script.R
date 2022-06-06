@@ -494,6 +494,12 @@ modelCompareDf
 
 #Final Model Information Together
 summary(linearModel5)
+par(mfrow=c(2,2))
+plot(linearModel5)
+par(mfrow=c(1,1))
 plot(predict(linearModel5, Test5), Test5$Life.expectancy, 
      xlab = "Predictions", ylab = "Targets", main = "Targets v Predictions")
 modelCompareDf[5,]
+
+
+

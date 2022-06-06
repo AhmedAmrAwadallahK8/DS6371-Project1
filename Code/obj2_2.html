@@ -375,15 +375,12 @@ pre code {
 <pre><code>## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
 ## x dplyr::filter() masks stats::filter()
 ## x dplyr::lag()    masks stats::lag()</code></pre>
-<pre class="r"><code>library(WDI)
-library(countrycode)
-library(GGally)</code></pre>
+<pre class="r"><code>library(GGally)</code></pre>
 <pre><code>## Registered S3 method overwritten by &#39;GGally&#39;:
 ##   method from   
 ##   +.gg   ggplot2</code></pre>
 <pre class="r"><code>library(class)</code></pre>
-<pre class="r"><code>#Change working directory to this source file directory
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))</code></pre>
+<pre class="r"><code>setwd(dirname(rstudioapi::getSourceEditorContext()$path))</code></pre>
 <pre class="r"><code>LifeExpecFilePath = &quot;../Datasets/LifeExpectancyData.csv&quot;
 df &lt;- read.csv(LifeExpecFilePath)</code></pre>
 <div id="checking-the-data" class="section level2">
@@ -587,27 +584,34 @@ na.count</code></pre>
 ## 7                       Schooling   160</code></pre>
 <pre class="r"><code>dim(df)</code></pre>
 <pre><code>## [1] 2888   22</code></pre>
-<p>There are now 2888 observations left in the dataset, a loss of about
-1.7% of the original amount of observations. The goal from now on is to
-find ways to input the missing values to the dataset.</p>
-<p>The population feature, which is the feature that gives us the
-information of the country’s total population count, is the feature that
-has the most missing values (NAs). Since the information comes per
-country per year, one way to solve this issue is to use the World Bank
-Database package, which contains this information as well as the GDP
-information, Hepatitis B and Total Expenditure.</p>
-<p>I will start by acquiring the population data, but the actual first
-step will be to input the abreviation of the countries in a new column
-to make it easier to grab the other missing information.</p>
-<pre class="r"><code>na.count</code></pre>
-<pre><code>##                          Features Count
-## 1                         Alcohol   175
-## 2                     Hepatitis.B   525
-## 3               Total.expenditure   212
-## 4                             GDP   435
-## 5                      Population   644
-## 6 Income.composition.of.resources   160
-## 7                       Schooling   160</code></pre>
+<pre class="r"><code>data.frame(cor(df[,c(&quot;Life.expectancy&quot;, na.count$Features)]))</code></pre>
+<pre><code>##                                 Life.expectancy Alcohol Hepatitis.B
+## Life.expectancy                               1      NA          NA
+## Alcohol                                      NA       1          NA
+## Hepatitis.B                                  NA      NA           1
+## Total.expenditure                            NA      NA          NA
+## GDP                                          NA      NA          NA
+## Population                                   NA      NA          NA
+## Income.composition.of.resources              NA      NA          NA
+## Schooling                                    NA      NA          NA
+##                                 Total.expenditure GDP Population
+## Life.expectancy                                NA  NA         NA
+## Alcohol                                        NA  NA         NA
+## Hepatitis.B                                    NA  NA         NA
+## Total.expenditure                               1  NA         NA
+## GDP                                            NA   1         NA
+## Population                                     NA  NA          1
+## Income.composition.of.resources                NA  NA         NA
+## Schooling                                      NA  NA         NA
+##                                 Income.composition.of.resources Schooling
+## Life.expectancy                                              NA        NA
+## Alcohol                                                      NA        NA
+## Hepatitis.B                                                  NA        NA
+## Total.expenditure                                            NA        NA
+## GDP                                                          NA        NA
+## Population                                                   NA        NA
+## Income.composition.of.resources                               1        NA
+## Schooling                                                    NA         1</code></pre>
 <div id="i-will-now-remove-the-features-that-have-missing-data-left." class="section level3">
 <h3>I will now remove the features that have missing data left.</h3>
 </div>
@@ -699,12 +703,11 @@ df2$Developed &lt;- ifelse(df$Status == &quot;Developed&quot;, 1, 0)
 # Dropping the &quot;Status&quot; feature
 df2 &lt;- df2 %&gt;% select(!Status)</code></pre>
 </div>
-<div id="the-knn-regression-model-will-take-the-average-value-of-the-k-nearest-neighbors.-to-find-features-that-will-produce-neighbors-that-can-best-predict-the-life-expectancy-i-will-use-the-correlation-value-each-feature-has-to-the-life.expectancy.-the-stronger-the-correlation-the-better." class="section level3">
-<h3>The knn regression model will take the average value of the k
-nearest neighbors. To find features that will produce neighbors that can
-best predict the life expectancy, I will use the correlation value each
-feature has to the Life.expectancy. The stronger the correlation, the
-better.</h3>
+<div id="a-non-parametric-model-does-not-require-a-linear-relationship-between-response-and-explanatory-vairables.-with-that-being-said-explanatory-variables-that-have-a-strong-correlation-to-the-response-variable-may-be-more-useful-to-make-predictions-on-new-data." class="section level3">
+<h3>A non parametric model does not require a linear relationship
+between response and explanatory vairables. With that being said,
+explanatory variables that have a strong correlation to the response
+variable may be more useful to make predictions on new data.</h3>
 <pre class="r"><code># library with ggpairs
 library(GGally)
 
@@ -723,47 +726,17 @@ ggpairs(df3, labeller = label_wrap_gen(8))</code></pre>
 <pre class="r"><code># Creating a correlation dataframe
 c &lt;- data.frame(cor(df2))
 # Checking the correlation dataframe where the absolute correlation from Life.expectancy is above 0.4
-c[abs(c$Life.expectancy) &gt; 0.4,]</code></pre>
-<pre><code>##                      Life.expectancy Adult.Mortality infant.deaths
-## Life.expectancy            1.0000000      -0.6931889   -0.19740774
-## Adult.Mortality           -0.6931889       1.0000000    0.07871249
-## BMI                        0.5670551      -0.3864596   -0.22757449
-## Polio                      0.4641662      -0.2715487   -0.17163047
-## Diphtheria                 0.4781941      -0.2720168   -0.17596707
-## HIV.AIDS                  -0.5603818       0.5267843    0.02528003
-## thinness..1.19.years      -0.4763420       0.3021235    0.46629684
-## thinness.5.9.years        -0.4707437       0.3076947    0.47192503
-## Developed                  0.4815494      -0.3132406   -0.11254824
-##                      percentage.expenditure     Measles        BMI
-## Life.expectancy                  0.38117253 -0.16052481  0.5670551
-## Adult.Mortality                 -0.24106223  0.03258707 -0.3864596
-## BMI                              0.23152598 -0.17614504  1.0000000
-## Polio                            0.14690442 -0.13780296  0.2875791
-## Diphtheria                       0.14320278 -0.14333741  0.2860775
-## HIV.AIDS                        -0.09838703  0.03100376 -0.2438395
-## thinness..1.19.years            -0.25262143  0.22487624 -0.5297372
-## thinness.5.9.years              -0.25414278  0.22111959 -0.5367571
-## Developed                        0.45293802 -0.07804875  0.3159069
-##                      under.five.deaths      Polio Diphtheria   HIV.AIDS
-## Life.expectancy            -0.22317185  0.4641662  0.4781941 -0.5603818
-## Adult.Mortality             0.09385360 -0.2715487 -0.2720168  0.5267843
-## BMI                        -0.23801610  0.2875791  0.2860775 -0.2438395
-## Polio                      -0.18964091  1.0000000  0.6683349 -0.1608397
-## Diphtheria                 -0.19645712  0.6683349  1.0000000 -0.1660540
-## HIV.AIDS                    0.03814284 -0.1608397 -0.1660540  1.0000000
-## thinness..1.19.years        0.46837285 -0.2227900 -0.2304703  0.2038369
-## thinness.5.9.years          0.47283250 -0.2235677 -0.2236794  0.2070577
-## Developed                  -0.11532387  0.2201535  0.2167211 -0.1497059
-##                      thinness..1.19.years thinness.5.9.years  Developed
-## Life.expectancy                -0.4763420         -0.4707437  0.4815494
-## Adult.Mortality                 0.3021235          0.3076947 -0.3132406
-## BMI                            -0.5297372         -0.5367571  0.3159069
-## Polio                          -0.2227900         -0.2235677  0.2201535
-## Diphtheria                     -0.2304703         -0.2236794  0.2167211
-## HIV.AIDS                        0.2038369          0.2070577 -0.1497059
-## thinness..1.19.years            1.0000000          0.9388030 -0.3706700
-## thinness.5.9.years              0.9388030          1.0000000 -0.3689930
-## Developed                      -0.3706700         -0.3689930  1.0000000</code></pre>
+c[abs(c$Life.expectancy) &gt; 0.4,] %&gt;% select(Life.expectancy)</code></pre>
+<pre><code>##                      Life.expectancy
+## Life.expectancy            1.0000000
+## Adult.Mortality           -0.6931889
+## BMI                        0.5670551
+## Polio                      0.4641662
+## Diphtheria                 0.4781941
+## HIV.AIDS                  -0.5603818
+## thinness..1.19.years      -0.4763420
+## thinness.5.9.years        -0.4707437
+## Developed                  0.4815494</code></pre>
 <pre class="r"><code># Setting a seed to make it replicable
 set.seed(1)
 
@@ -776,69 +749,12 @@ train &lt;- df2[train.index,]
 
 # Creating the testing set
 test &lt;- df2[-train.index,]</code></pre>
-<pre class="r"><code># library with trainControl, train, RMSE, and MAE
-library(caret)</code></pre>
-<pre><code>## Loading required package: lattice</code></pre>
-<pre><code>## 
-## Attaching package: &#39;caret&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:purrr&#39;:
-## 
-##     lift</code></pre>
-<pre class="r"><code># Creating a control variable to implement a 5 fold cross validation
-fitControl &lt;- trainControl(method = &quot;cv&quot;, number = 5)
-
-# Creating a knn model that will choose between 1 to 15 values for the &quot;k&quot; neighbors from which to take the mean.
-knn.model &lt;- train(Life.expectancy ~ Developed + Adult.Mortality + BMI + HIV.AIDS + thinness..1.19.years + thinness.5.9.years, 
-                    method = &quot;knn&quot;, tuneGrid = expand.grid(k = 1:15), data = train, trControl = fitControl)
-
-# Checking the model
-knn.model</code></pre>
-<pre><code>## k-Nearest Neighbors 
-## 
-## 2310 samples
-##    6 predictor
-## 
-## No pre-processing
-## Resampling: Cross-Validated (5 fold) 
-## Summary of sample sizes: 1849, 1849, 1847, 1848, 1847 
-## Resampling results across tuning parameters:
-## 
-##   k   RMSE      Rsquared   MAE     
-##    1  2.930385  0.9083413  1.797709
-##    2  2.742527  0.9181244  1.765975
-##    3  2.730124  0.9184577  1.788485
-##    4  2.824216  0.9122836  1.869528
-##    5  2.828473  0.9120633  1.895198
-##    6  2.858872  0.9102216  1.921659
-##    7  2.899830  0.9076253  1.944663
-##    8  2.937370  0.9051886  1.967241
-##    9  2.943737  0.9048452  1.989642
-##   10  2.961465  0.9036801  2.007828
-##   11  2.969843  0.9031400  2.020917
-##   12  2.985053  0.9021607  2.029442
-##   13  3.004185  0.9009817  2.046253
-##   14  3.024713  0.8996740  2.058101
-##   15  3.060839  0.8972789  2.086051
-## 
-## RMSE was used to select the optimal model using the smallest value.
-## The final value used for the model was k = 3.</code></pre>
-<pre class="r"><code># Creating a test.x1 data set with only the variable used in the creation of the model, without the response variable.
-test.x &lt;- test %&gt;% select(!Life.expectancy)
-test.x &lt;- test %&gt;% select(Developed, Adult.Mortality, BMI, HIV.AIDS, thinness..1.19.years, thinness.5.9.years)
-
-# Making predictions with the testing data
-knn.pred &lt;- predict(knn.model, test.x)
-
-RMSE(knn.pred, test$Life.expectancy)</code></pre>
-<pre><code>## [1] 2.386024</code></pre>
-<pre class="r"><code>MAE(knn.pred, test$Life.expectancy)</code></pre>
-<pre><code>## [1] 1.643829</code></pre>
-<pre class="r"><code># library with tree
+<pre class="r"><code># library with tree function for the regression tree model
 library(tree)</code></pre>
 <pre><code>## Registered S3 method overwritten by &#39;tree&#39;:
 ##   method     from
 ##   print.tree cli</code></pre>
-<pre class="r"><code># Tree Model
+<pre class="r"><code># Regression Tree Model
 tree.model &lt;- tree(Life.expectancy ~ ., data = train)
 summary(tree.model)</code></pre>
 <pre><code>## 
@@ -856,16 +772,117 @@ summary(tree.model)</code></pre>
 plot(tree.model)
 text(tree.model)</code></pre>
 <p><img src="data:image/png;base64,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KvB9IEC3JFRfOi2FESrwfSBAtyRUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LYURKnAUIFRfOi2FESpwFCBUXzothREqcBQgVF86LZ2Bm8XiwzeJ5e+fppev7l4sPvim/tft5/4jy8Xalbvker3gyeZtqF8oLvB2TcMr3N77p+1LNSt49XC9gQ+fWztvP7tcLC4+/nrX9UibTUl56vrac0m9/mS9Nfc+fTO2pOKXXWu9Eb2r6NFdEKDHU3+KqY9vY7XffRkWcl3tD/zXmFDt7QttDNB4hVuzL07l7WVbvve7Za/aJRff33FFyuZTUp5UgO5WUn0CXlwNLukWJwK0bgoBeuLqEHmQeGBjtd9EhVxXu1spN4sp1d6+0MYAjVe4rbtrd/v6/Ox3mG4OVdFS5lNSnlSA7lRS8R7kwD6lX3Z+UwjQE7dcXHy0uPgifiCv2h96tXBd/bxzgAbPy1fXd/+K1Q7AxfP10peX7QtXS+6vj96/fZYseEwzn5LyuAE69rzJ1tt2UR2r//Gz7i9wvGS1CsvO+/0D/ZkmQI+mqulXySrKq/Z/dense7x/evHDYgH6+rfCr/DrS293Ztn/uztnt+zKvir5Xc8WyJpRSXl2D1C/pNYv1f6VWLer/le8pP4tv+zM9cH+ShOgR1NV0PrTTp+hyaj2526B3gx9k+JtWO03QN99eRnuA92u9woWHz/rX9Gqvfuns2R9FJpuPDaaUUl5dgzQqKTeWrC3+5LxkrjszHpTDlVjBOjRXFdFce0dS9x+tj4QefymrfY4VZoavEmcvKmqxjkuWT/xiVXoXX198tHnb7oVf/jm9UfrBS+7F6oK/N3L6rL4xaPPuxewE1b9Cp1wG6j/18/q8/h+gFaHV8+d78/by/A8nfP9dlqNLc2opKqlfUnF50B3LSmnyeHBeL8kLDuzfjdSJ4r3gQA9lqZybtxz/sv2ssrP86rdyaW3lx9809dj/Ze4cr/pInRd70qsq+uHToAu/as66Wp3tug6UdJ1R6Tqr37QFWm5/ga7OyDxN8V9G+KvBKaZU0nZumurPZdUJ97ftiVh2Zn12q9um78AG97SrRGgx7Ksi9Hd3+oL7lfyqt2pleW67rtqd7psNA9fL+7VVfmgf6HFwi326rfS1d5u9Cp1SHj36qPmKxXX5DsnkruNbb4a9543S9xIPdwJ/nM3p5Ly83M4QDNLqn1CdRHyamhJWHZu0y6+227Ax3s+lCdAj6Qr5b5++gvRdYfIsWofOGF1ZdGzft5V/6Tr5vpkXVoP2gWLD5u/6P050PW6H/9s1VwFd9YUrrA/4Aq3oDpSXCS6MXsN7iq52tXovl5NP1A3NHfvMiVqViVVr7svqcUhSqpaad2ZY2RJOkCvnWjf88lQAvRIuoOj9f+7I47uw6w682VVe3/AVR1udU9625+A7/51vQhPO9U7D/2anDKPVthdvlxGZ/U33UXkB+h3+wKuFxKgezCrknLOJFQrP0RJ1TF4z7mXLbEkGaBVT4+6z1Od0fstNgL0SLozfdWH2f2jK6BlZrX3xVIdbnVPWtopsetmybX9dnwVvj2FNFTtN83Whpcxqy/S8M7nqm1fW8lNn+fqq/Huyza5CdA9mFVJOap90QOU1N3vPPzk0tuFjJekA9Tp6bTcd7djAvQ47FR31xPSOR1utb1dtXc5VB9udU9yrsm0uxPOkiBA3/3R714uRgO0vX65fiVvA7baA60D9Em/AVUbCdDdzaukOk1JjQVofkmtmqtZD8aWpG/ldB/e7xl3AvQ43HvJmpp2zqFv6HMyXO1tOdeHW+2T3EsK7as4VzstQO9ef3LpHFQP3nfXHHAtwwumW54DtZ2Ea/dr6m4TtjSvklqt3JIaC9D8kmobFvyev2RDgDonjPeDAD2KuxdutXcnlnau9vbx67rm+2p376AcClDn5vTxAL1pD+yic++bLpn6AdpvfvPKXIXf2cxKyhvvYDxAs0uq28x4w23JpgDd959rAvQovOJqImsfuwvN/94/rX9tqz3Qul/KvUff+/HPx8+BNgdc4eFWa7TTnt+NKQ5Q+oHuZmYl1XZ1aktqNECzS8pb38ASAvQsuRHSnobZxwmr5oDrpvnaxCes2phKBWjfJXrDRaTmgCs63OoN3zbid6Tv47J5J7gTaWczK6nq162kRgM0u6S89Q0smXAIzznQk+OfpmmukDqns7veJ1aWy8W0aq9r8brvRzJ0yTQRoN2imw2H8Osv1MVPxm4lTtwLX3Mq2frZdF/G+IuN7cytpJxP9GbDIfz2JeX+sehPogdLWqkAdZ4cn0LdEQF6DDdeV4u2M13faa/6i91We1uot0+nVvv6kR80h1tjnfaGA7Ra03iArhd95+n4YU88GtPKr+SqYU37X1lHUEZj2sXcSsoCtFrTeIBuXVK2AV0/pHiJvXYUoPYH/O46PXxqPgL0GK69aq0y40F728hX7Rhc3Rhvi+p2XvdGkq74gr/XXbXXZ578Ozvc20aCvZDuhbpD+Po53fBIQbX3K1wu7l1m/NV2K7k6X1c1te4H2p8xq5YwHmimuZVU9RwrqcV+S6ruCf/c7QkfL7GnpjvSV0+uqm3P54sI0CNwD2Er7WFz3w/lO0/7fnytHzz1qr25YHDlHIH0p3Js3hr/bH5/ZcGr9vaFvMsPqQDtV7iyu1q25FWyc590+1JOJxwuIW1vdiXl96pKBGh8MbIAACAASURBVOhOJXXrTMnxYGBJI+gy0Gyme8Ftz4c7BOgRLIPjhqoeq0pqpwXqhs5ZF2z7QT9571d702XlSarab/q/qf0xUjx0Tl/t7QstFl924fnpC7f3SrTCVfZBtr8r8NOuhPvBHLolzImUY3YltVodtKT6Daj2pweWdC8dB+jqbffkvVcbAXp48d0PXc/yqtOGDd64ak6fV2NuBdW+uqsOVB6nqt1+1+vRvHCG7nKHDWteaLGwKQ2b66pBtfcrDH9/q1a7+0jvXn5UDRX5lS1hVs588yup1erAJdW8ulsu8ZLVUIC223/v059tudaNCFBFW83bPTi4OZC2qb7OqKQIUEVbBei+b37D2dtUX2dUUgSoom0C9PVlfFkTGLOhvs6ppAhQRZMD9OYQFy5x7sbq68xKigBVNDlA34bDLQKbjdXXmZUUAapocoC+fxb0EgE2G6uvMyspAlTRVheRgC0J1ZdOS2GEChwFCNWXTkuLWmBc6Q/ozJX+eA+u3DtbbM1KSpfX/JX+hM5b6U/38Mq9tcXWrISAGCfx/mx5+81dfe/r400DBE9a38b397a+R3N/Y1vfvXy4iG+zrC/BR0PHuHOTZI4rQ4CeOYmA2IHE+7NdgLax8uAYAXr3ZdMvc28B+qof/ehxuElxRjpDPRGgSJIIiB1IvD/bBWg7OtyTYwRoN2bIvgLUHdnOGzPqOpWR7rMJUKRIBMQOJN6f7QJ0uXNv82IB2g3rHI1ffJPMyD3MUkSAnjmJgNiBxPuzdYDuGCtHDFB/Ag6bQ7AdKN82KBWg17vfGE+AnjmJgNiBxPtzrgEaTQHnTPLmzhhYnYz4vbhVqQnit0WAnjmJgNjBib4/A5MGN9fP7Qp0NW2PN8bx3avqGvWjz9vcuF4vf73+lUf9b/TXVZ60AwQv40wKXsQRr69+Leep7+qL5BfN+Mg3/fnHpj2vvK1vVjM8EvH4JMTuH42qDYk/C/Us8TsiQM/ciQbE0Zzo+5MO0D+89K+ItPNB2Swb/Qw9/fwYH77yUygK0Hqy9v7lrhIvYjauz5mhqnqCH6A/uW5+urDZi7pNidWTCqwNTivgBOj6lZ6k9qvXq7+69Ya73x4BeuZONCCO5kTfn2SAmn6mjMavtGHizHDWzdB279K/YB0FqF2Lb/8VvUhv8/qcGf6qWPQD9CPvuWNdjO5eNc+9PxJ83unQ9dYkAnS5uPhuu4aPcw/lCdAzd6IBcTQn+v4MBGg1g+5dN4FzfUn667ZrZPWUesHnq2am4Tpdqn2+DxP7kVftOqoo65On2ReNX6STXF/1/vZPrRY8ro7Iq4vkdcQ650Dbrf/9duuX7fX02xdhp4B6OuFmCqRhzqRE193E9WGAXjtxnnsylAA9cycaEEdzou9POkDbPcJ23sy+O1I3la/Nj97Fy3UqOYIA7Y/hmys08Ys4vxevr3l/26faXmE3N7IboB987W59fz0o7I5a79ZumhHw7rpf1U0fyEGA1nO2f5qY4H0bBOiZO9GAOJoTfX/SAfrEXeI8pY02Z0LKNlWuU8ERBGh3rXodgtWP8YvEm+Ssr31/b4IVtS/mBai39fVrJENy/fjF6M7nqsnPNnW7c6FxgDp/AJbR6YipCNAzd6IBcTQn+v4kA9Rf0mWUu6Df3Wx3K69TPZaCAK1OFVYvfNPN5R6+SCu9vvb99Z767o9+93IRBWjQnvr86MVv/CiKygl7oPW+ZX8A359+He6cFc/VPBUBeuZONCCO5kTfn2kB2kVd80/3sswi2ic1YYDWF7G75yZeZOWuZHx91STp3YWlDQHan6G8CPsxbTwHeuvchtTn5njv1uzJOgnQM3eiAXE0J/r+TAhQpyd5E2jONfGtArQ5hm/zMfEiK287RtfnLtoUoHcvB/sxjV+Fry5Z3bd94Qd+q9LCUwyTEaBn7kQD4mhO9P3J2QN1781pTQrQ5hi+jZjEi6zclYTr897fZp/03qPv/fjn8TnQMEDXXn82kKBj/UCrrlL9zEduv6n0CzUIUKSdaEAczYm+P5nnQMMrJdMCtB5Ks31q4kVa6fV57++y71GfuIiUCNC1d3/w2VAno/SdSF96MTk1QLNvXyVAz9yJBsTRnOr7cx1e8o4iyLkw0jwlcaVkWoCu//Gg278cvtySXp/7/jqbeLPpEN7pvDSc2dG98PWq3SVjAeqc9wx7ZE1HgJ65Uw2IYznV96fv53j7dCBArV/m+/Ypy76vZRce0wJ0veSD/+RcjAlexPm9eH3t+7tsb21qV1dt9IY9UOthNRygq3A0pjqY09fn433Mri+q12t0WwTomTvVgDiWWb0/QSJ16dLu/Xnf8mrX6u//2uKX/1t3208XQetf+qVftxuP/vPTxV//9eop/9V2w+79g3+56DrSr//XXhm/9z3LxSBA62s/1q+yvmVovfu3WPzCwpk9oxuM83X17L/xz7q1tU91PK8vD3Vb2+3YJrox9XctTU23kT3JgY70VUvCwUO3QYCeuVkFxAzN6v0ZD1DbY1q53Yl+8NQN0PqeyF/t75NsfOepF6B2MFsFqE2CsfibX7dbEQRo/aIPbKsiTfy464v8avJ3msvyV6lzoM6NlpM7uS/jNTgPXfVvXfOI2ycg80YkAvTczSogZmhW7894gDp361QPtt/+J++9AG1DoTmWbrOxHh0pCNA/X6fJOkD/nbu07TgfBmgdTFfhmh2/2ERVt77/Ez/jH/rR9ml7wrQZAuVJKkBtdJT7U/cOvQFVNgfo6u2z7pnfn7iGCAF65mYVEDM0q/dnPECDuTbe/cdFPRCbH6DLZlSj9nl1Z5+/8t/fNwH6pJuz8i8v+kP4X6w6TVbDdb7/zS54EwHq7fy2L7JwZs/4hX+y6td38fjN/1ws/uw/X7/SH7cBde/Tn7Uv+vqTRdMFvrst/q66yP44fRX+27qrUmrc0QFB1/2NAVqdvViMDTm6GQF65mYVEDM0q/dnQ4AGZ/hS92FWT33lvkrfO9N77W64Dz+Uq6UjnXmmzZ6xck9oVon2RbuxO8+eMUsE6JmbVUDM0Kzenw0B6o/9kbw4fdMc03vnShMBWp+u7A7iLRaXw5drps6e0f4cjMG8l9kzZokAPXOzCogZmtX7sylAb9xj+OTNM3UeurumAwHaX9L3AtQfHcQxffaMaHuaTdnH7BmzRICeuVkFxAzN6v3ZFKDu1GvJadiafcEbZ0dyKEBv7IrRpgvQ28yeET+y+KZd3c6zZ8wSAXrmZhUQMzSr92dTgLpPSN6U3jzuZutQgHbnU6vzno9HrqFsN3tG8Lt1f892w3afPWOWCNAzN6uAmKFZvT/hjYdRgDpXw1N3b3fJ6d+kmAzQ/sbLaJWn5lAfxjQE6JkrXWBzN6v3Z2OADk90UevOYTo5uylACyTenh3s05iEAD1zpQts7mb1/mwO0P5oOXm959queTudHjcE6Orudd+fPBijeMvZM/zlv/Pwk+420/3MnpE0q8/vuHRbfkzCBTbJrN6fjedAre9S6gje+i95M79tCtDKty8/qSPUP6265ewZsdv4Pvb82TOSZvX5HZduy49JuMAmmdX7szlAu+BM9qv07lK3ruxDAVo/w2l/YnLKrWbPSEmM7pE9e0bSrD6/49Jt+TEJF9gks3p/JgRoe+ie6gQa3AnePL7pKrzXfv+OzeZFJ8+eMalJA5ueb1af33HptvyYhAtsklm9PxMCtL14lBrIM5iDqInCkX6g7RB57vF0cpbOibNnpMVxSYDuiW7Lj0m4wCaZ1fszIUCbhckbe9zf7s80brgTKbh5c2hmiymzZ6TFcZk9e0bSrD6/49Jt+TEJF9gks3p/pgRo/cNN+hKSf1t7d/174F74ph+9d008eXdTY/PsGelmNPu0e5k9I2lWn99x6bb8mIQLbJJZvT9TArQ+ek+NbXQTTjLcTQI3MBpTM5rcop/nbbWpi9Hk2TPeXoadlvYye0bSrD6/49Jt+TEJF9gks3p/JgXoOoy+8zQ5joi7sBtjLhGgd99+ZsfjzdnNr6oBRevj9MmnJ0f2JPu5Mvrr+nuZPSPpgJ+fe1Gu3d9vRkK9l+zYdfeqeuzh8/6m2/iK3n7NqXLP16wCYoZm9f5MCtD6e+2EUJtk4RX0drQQN0ATvZzCO5Gm7xwmZs/oM/X2afiK+5g9I+mAn587PHMToDb7yePo2X0L73f9dAnQczCrgJihWb0/kwK0/m46P7exFY7lWX39rwYDtD9sXyz6eS22mtkiNXuG7ZTe9q/ZXaTfw+wZSQf8/NxutVfhgvAvjfMXops9gAA9B7MKiBma1fszLUCDgeOb2Ipv8Lmuv8qpAH34va/6Z1Xt//az6uDz4tGPthgnKTV7hntU38yV4Rzr7j57RtIBP7+wu0A362jqPEQzV2k7AFXc7eAgY6HOqXLP16wCYobU359Tb/8Btz+8UjcyiYlz+e0mvB82WrAvJ/7JnYhT/4Icmvr7c+rtP9z2R3fLjkxi4vT/CruC7bnbluPEP7kTcepfkENTf39Ovf2H2/6xWUjCMfgH50IJO0fs06l+crf1XcFxn+PkCI37l+hcYfpZY3tlvyDvn9pbEhzK9A+ti/GX/02qTfaG3gY3Yi+jxl9PO1EfvlD7/rRrGl7hVhJ9XaLPZbg/zOjnu38E6JCxWUjCAB2+PfVgB/CnGqB3XzZvVbEAjTtXuFvgnNJvFP2CuG9JvXGpdFw36P5vjgVo95abZXgdtH5TNgZo/ELpAE09b7q4r4t9LleDz/GbQoBOdbjtH5uFJJzEpL7eVI8ZcO+598SRe7t2dpqfXPe3pliARp0r3A2IHyn5BfHG2q37eTxIPLROjL+WbFP3hiZvp/bvmanflI2hl9pPSAXoTsNdxH1d4s9lrD/M8Oebtigt+53ai8Ot/9ppY7ATGZ3XrO4O67o5eKNTHeoKfOXcAvRIhsdiqD7B6pjw9oWTLgULvA6OfkPWf9A/cs+0uwH6V5NtGg3Qh96vXFc/7xygY8+bKtHXZdkO9f7Hz+z+9MH+MNuOtXH0vIzkvlP7cbD11zdPffomNUxqfDvqte2ten/ZD3cFaUWAZkrdBl2rvpZPuuf0n/ixCjy4UbpaculWU3XW6FW3Wd5D60f+UnpSiLEA/Vfuafv3Ty9+WCxA/ZbHfV2sUrqv01h/mOHPN+1sA6y04VlI4klMmmOMauflXTVClX2iQ/OV7sVpvvOlAzQ5FHnNOV1tczscp8ATQ/XU96J8/Kzfjup9azcreGi99C8m2zQaoM/dzLtxwnnEAQI0annc18W5QtvuXY70hxn5fNNKB1jp9R+Df5NCYhKTOkDbkrlxHj1sSJziO9+doLpq35tquO5uzhj3RNrdy/ABb8mqG3rg0edvvJ/tRo3w585w5wp/EDG719n7lvb5H6x+9e5lczfK590LfPjm9XqLH309vCmd5GCR1XHrcyeY6i3qxzarH/oL66Oei8dv6qsmD9xia7e3+W17y70Xv3IOdddPfGKh19zy0jetb8lL94X65sbnQPsVJt62KS3vhZdqU+MVR88Z6zyTUjrASq//KNyvVnISk2vnNOnYn8e9OsV33g/Qn7TnmS+6qRC7b+EfXrpf1niJO/TA1/7P7ScV/uxuwUDnCvfkmf27KnAnm9pkDVfv3OjXfOLX9T5dXSqDm1IbGq58uY5GZ8+uKaXmiKZ7qF3fz6sAvbr9F+v//t3PnSdvCFBnx+7t5Qff9BHX34bdNq1vyQ+dF3LvVF4NBWj8tk1qeS8VjuHhefScsc4zKaUDrPT6j8L5+5mexMTt7Ok8eb/TP4VO8Z33A/Sj7jvYdH7pv4Wm/trFS9yhB+rfDfuuDPdlGe5c4QaofaB1gfcfZPt9DVfvBcqT5gXu1c95MNqtZmTCnHdvVu6hcbMFTSQ1D/3r7kV/pbqN2GvTpAB19m6X68107hv3m9a3xHkhb6SH1VCARm/btJb3ghNg9W3S4TsYnSQb6zyTUjrASq//KCwTByYxWSYD9MCn+U7znXfOgTZDHN79/qIf87AP0PqBL+2BYEl9Gfbz6mt42c+sUF+WrS6gV1/V8Gcz3LnC+S4615PqAu8PJZqtj1ZfLXhcHaF/210orlbzYb1rNbwpG6dstADtSskK7U8vm33EV844Z12bvAAdnBWi/4Oxft5V/6Tr5tppnVYPujesaYkXsn1zF2+CALXnBW/bNi1fhVdg68/t4vnoc/rnJT/ftNIBVnr9R9GX2tAkJu7fQavxwx7Bn0GAtgNyL/urrV2A2m7Xg1VqiTdtd/UNunbCoJkzzP+5N9K5ooqF9gu6XPgB2l/aXdZri1Zvn383qqSd1BnclGmThje/0h1v26CV/2v9u/+hf5l1m/7kxeLP/eNmu6cFaH8MXx3Bd0+ywdC7fzmnp7oX8pq7+GYwQIO3bZuWR31d6mC89/zN2HNWo59vWukAK73+g0nNQjI4iYk7GKudAz3sEfwZBKj/h8YJ0OiBYIlzSq15vWW/l9QIf+4Nd65ovqPVjlWzf+QF6I03m3i0eu/1uwC1g5b0plQJNboL5gTotZ0Otn/YH5V2PLa6M/J66bQA7V+8OoLvnuR0XG6b4Jyeil+o+qMzEqD+27ZNy8O+Lne/8/CTy3CnMu4PM/r5JpUOsNLrP5jELCTDk5jUc/Q1H+0r+9hSZ8736DTf+UQ3pihA4wf8JfE83/V5t4vf6AdkDH9OiUaAdE7//XYQoO213fXKniSnGW+8+6PfvVz0AXq1YVO22AO1qyc3Tl9y7/pS8y41bZoWoN2BVX0E3z3JvwT6wF8SvFDT3LEA9d62bVsef3uq61sPNjzHf3hzl/rSAXbUKTVGxwmIx4GoL/NtOlIYW7s/C8lYr/iqJKozXe+cg/xD35ooHaDhab/u1NdF21ko/DklOkLoLkBfPL8JArQ9GG0ORROrr/r+dCcj2wDta2VwU6afA3VvT+yL0ekHau9S3aaJAdomZH0E3z7JPW0/tLe/8ps7FqDe27ZNy5N9XYKv4MBzvFYe8ghw9uLLl9uNA9GdXs8cAz+ahWRsEhP3Qac39iFPgQoH6Fv/wkn9nJd+Z6Hw57FNMfW14Yv1YbzfjWnVHoy2h6KJ1buLwgAd2ZRN16JTHRP6c5XJAL3ZIkD788UPVk6A9n/029dNBaj3DowFqPu2bdHydF+XlZeJg8/p7XRL/hmIRwXYahyIm6HnThXMQhJUcbhT+tOupj52ju4I0MieAjTxzr7+zI+p8OfBTUnwO9Kv2oPR9lA0Xn3zl/3eo+/9+OdPowAd35TR3pDtWxIkdrVoaA90mwBt/vf+aXd75OQ9UK+5owHqvm3TWz7Q18V75eHnJJ6sKR4VYJtxIOquJl83R+CZR9L+LCSbJjF5V98q8+ir/tdHBgndC90ATXSobrz7gyqpLN3Cn33D5ZS4lbM6GF32n3qw+mXf7fx9MkDHN2X4fpz2LXGPRdszewPnQPvr65MCtK7Qm2aj4nOg7bX2RIB6zR0NUPdtm9zyob4u7iuPPCdspax4VIBtxoFYdtXqXMM9L7oBGl0ecI486wQLf7ZnpjpXrLy1tRvZ/e3rAvTt5cVP2kPR1Oq7V7oJD+GHN8WRuBfe+WV/Q5vCDq7C/712lc1T29rfGKD1F+q675o0dBU+DFC/ueMB6rxtU1se9nXxb7FtNnywP8zI56smPnOSOpfSiMeBiL+GZ0c3QOseKnYP5RO3r03z+Yc/9xKdKzqWi7dPLSG7AF0/+p2n7YuGq7cNvH0anQMd3BRfPBrTqntLbrw917Z/Zt8PtD4yavu+/p26TdVGTAvQ9SM/aI7gx/qBDgdoPX/5aIC6b9u0lkd9XWyT+p5Jw/1hRj5fNfGoANuMA+FcwXHP65yTkw3QbjcuP0CbSVDfNL0e2p7sdm/Mg/jnXty5wizbmVW7+4tqfTeT5eLe5UU/rJq/+uvmmLa5XBTEzuCmTNC8Jf6sMHfNCG5/2vb7aEa2qzanuY558ZNXXX9JJ8+CPYguQOvw9W8Wcu9Eau+pcgO0u83Kmrv4IhWg/Qqdt22SeL+x/8j6vvEj+5Zjn6+YeFSAbcaBcO8NisdwOQunGaDNBZGr3QLUu5zYfe/dayzRz/13LupcYQ9Ft4E3S5wNdw7xvReJuxklujEttj8ZX78l7U5Vv5nNWYK7f9u96Hf8k/OLaq/SC9DuLffuCLnqt63v8z50L7x7Wal+Ia+5iQDtVxi8bVMk+rrcOg18MPCckc9XVTwqwDbjQLiHLWd6Mvk0A7TpzPBkxwBd3QRdg6yPxP0vUj/bTkvQucJ9KByIyAtQ71x6uPovu9f89EU3ZKV1Ywo2Zbs3q7oG091vbzl/Za9ajcb0S//UTZQn7/0A7d7yRIDe9Ltp/RcmHo0paMmTuLlBgPbPC9+2SS2OwtE2qbnuPt4fxv18m4EEHzo3gMZL+kfiaep26kie7Bq0+nb4JeOH4q7t24hHBdhmHAg3NM+0O8NpBujqrjoQe7xrgHb1bp3T6/pzRuj0f3aO+vzOFf5DVU8K5wDHDVD/wnq4+r7W42vX8aZNf6/Wb8l/edEPMNW+ZH13+l01HuhlOx7oh39Sr/9v/aNfq7c+CNDuLU8EqJ3p8jrJu2+C25LuhcLmBgFqzwvfiY1SfV369X389eBzkp+vDTrY7fnHSzqJaep27Eie6LZ+1/3liQMpfijRtX0bd9GoAPESb1P9cSAIUOxFH6CHvi/iRG26FbHg2+YczbebEC/puGclHkSL8g5g427rzi5gmEjRQ6n9123EowJsNQ4EAYq9cC4inWUV7WpTgJZ725pLfe21rifpJe5zg2nqdu9IHp06rPK7660e7FbGDyWnOMwT9buLl0TjQBCg2IsuIF5f7lrG52lDgBZ822wvq+sVEC/p2DnAuxd2pWrHjuRRt3XrZHsdvmT0UKJre774r9jGcSAIUOxFHRA36fNWGA/Qom+bc+a8/We8pBfPw7N7R/K427rXty2a19d/KO7avoM4ATeOA8FVeOxFNyL9dp1xdIwFaNG3Lb6Tetq91e1J2907ksfd1rcJ0PQUh5mmBGiwKfQDxV7UAfH+2caRK1SNBWjRt22r0HC0ybl7gMTd1r3j9HCqruCh9BSHmbYZVqTd3+VOpC3c1p9w/D65g5sdz/ungyv1H9qtm9xEEwe8He4yGPUv3PXy6ryUHpB4UB0R9cdy7/nQkhQ7hN7xEDbutl6d16yvC30W7ZhHD6WnONxq9eGoAFuNA8G98JPdfRndnd49UiJAR1bqPbRjN7mppgXEcJfBuH/h2DSdp2e2AVodiXa3LN3/Jr0koYuW3S+iJLqt2x0B0frDh+Ku7VuKRwXYbhwIRmOaKjG8R6tEgCbmuUk+dKz9uEkBMdxlcLx/IQF6ONe2A2gDvARLYn207BygyW7rty+8XVJX8FB6isNt1++NCrDdOBBdz64dxgOducMHaAF1LqY/L/+hvpvc4tQd8d1NKd38A7W/+QNbVUg9zc6D1JLEb/V/o3cO0FS3dbuJP5qgOXooOcXhNuJRAbYaB2L3Gwnm7hwDtBlbKBmg/kP9Yc2+vsblHPHtTSjd+oMGqE0scvFFYknyl9rl++wH2R0g16Po/6wN8OgiUvBQcorDrUSjPmw1DoRNspF7K+vcnV+A1h/ix89SARo+1HeTWyx27ya3nWgM4JHz7XH/wrB7YPkAPdP1O/PZtx9DvCTgTlO3147ky24sl+41XwV7CamHUlMcbicc9WGrcSBWOw+mMnf7qbxuR70bYK7uTtu+Z+4YEfX76z3gLVl1A93YkBnNz/ZhhT/H6hMx6ROv4UP9FcX1F9DvJudfUHyS2rLVu/rK+EVXLdfr33i9bsyjrzdvZWIWimk9PrpnBd0DzzbASq/fvXR9E4y6nc5Eb5q6vXYkv+lGiBvqGZV8KDHFIfboEAH6k/bS4UX9gTkB+oeX/fNWqSXuQDdf+z9HJ2AG/5ouLx6/GbhyFT7U19T6C+jXl5NhbbKGW+acb+qG+frwVRuL41uZngdtWpfBLkCD7oFnG2Cl17+M4jJeEv6C02t1rx3J47sjg1spRx5a7aEjPVIOEaAfdfHRjesYzarbX8/zl7gnqLsRjHtXiZ9T3r2xlW54yA3Q66gY+zPkwZTD4an8fjTme/VzHoxu5eBMvNN2Vm76y7te98CzDbDS63cTcBntAcYpFUxTt9eO5E1VjJwVGD1hcOxzVCoOcA606eZw9/uLfgDBPkDrB760B4IldaeHz51+EMt2eJuqd0Y7jZH386Bp/UD7L0N9DtSrOBt0uT/z5G1ZtaCfY6ObomLxYb1TObyVzcXQZL/9SafL+rNNQffAsw2w0ut/6wxj0uxCxksc4TR1O3ckj7utb3UIn57iEHt0iABtp+pa9ncjdAFqM0A+WKWW2NgHbbXYmZwX3ZRn3s+DpgVo301usYi6yV33e5pt2fpbZvXYfaPs6sLgVta7sQPn06cEaN+/MOweeLYBVnz91TvefKqvbJ6XYEkvnqZu147kyY7sXaGEvQDihxJd27FfhwjQtlCiMeLjB4Il0dyNy26nrhX+PGjinUhdN7nECcubpuDay92Jec07Nol7t3xwK6upIYduGp0QoNa/MOweeL4BVnr9b9tp9971B+fxkk5imrpdO5Inuq13NZvohxo/lJziEHt0wG5MW0+y4Y473gx6U59bvfiNH72xtXg/D5oYoCPd5Nrr3OvteLJKbFnr3R/97qXtmdif//RW7rYH6vQvDJZenW+AFV+/c677wzfpJc6Nm45+8r5NJ+1HJbut9+77f06TD3U4A3oQMwtQV7Pn11Zj2yMo/HnI1Hvh+56/cTe55hi+OYJPbFnVG64r7mAS9+Gt3OUcqNu/MPjFJ2ccYMXX3/UEtzsnwyVtgCWnstu5I3nckd3W459VSj2U6tqOfZpTgLp/bdsaaGcNrzQv/3JzP6Z2MyYFaNtNkW/RDwAADbpJREFULurGtGqP4dsj+MSWuYvCAB3Zyuyr8F7/wvAXzznAiq//Xd1V+dFXg0vaABuYym7XjuRxR/bVt5/ULxmsP/VQsms79mhmAZq4UPn6Mz+Lwp+TJgdoI+pIv2qP4Zsj+MSWNd+We4++9+OfP40CdHwrs/qB+v0Lg18kQEuPBQBVcwrQwa5q7/7gs4XbIyj8ObZ1gCbWfV1Pp97NdxvPTHO/nx83EaDjW7n1nUjRBQtvSzgHSoCijDkFqHW6aPk9jj74Jvx5eHOmBWi/Y7lYJLrJvb28+MmL/tbzaMuc2RP8AJ20ldvcCx/3Lwy7B5YOEPX1Q9acArTukmM3Sno3HjdRFP48aFqA9rm4WCS6ya0f/c7Tdn3hltm2Vx3sgj3QiVv5+re83cyRLoNR/8KweyABAhSxxwDt9tXyA7SZcvtN05Gt7a5u9/s8iH8eNPEQvusmVx1Qxy+3XNy7bLcw2rLr5hC+uVxUP8mb0WvaVnqGuwzG/QvD7oEEKFDEvr55zUXpq90C1Btnvb3BPLzU7f/sdoFzQybo7DnykPdy/pOrNjl3wnlb5v4cBmi0ldNEXQZH+hcG3QMJUKCIvc2J9KL5Lu8WoKuboP+PdWy7/0Xq5x0DNO4m5z7ZO5YOt+zLLs8+bc8DXPu/6G7lRGGXwbH+hX73QAIUKGJv37y76pLz410DtJt+0nq9fVt3+rFhOP2fdw3QtpucBZD3ZO/Cerhl/XSe7fUn78nhVk8TdBkc7V/odQ8kQIEi+OZV0gHk3sA5bwQoUATfvEo6gOLhHueKAAWK4JtXSQbQ68ttLgEVRYACRfDNq8QBdONcL5q/gwZoM8HTw+d2NqM//evzewv4I7Pv8Kdo8vrjtQ1vEbAXBGglDqC6n9CJnAE9bIDaZFDO7Qfu5azeYFxtGv46d/3pAeL8OVsIUBwSAVqJA+j9s6HBO+bogAHq9Di1G6U68bTkqbiygaAPu/54bQQoDowArZz6OcTDbX9zC1Z7y1UdQFUoVT2tbl+MxOLSuQWrTrzcAE2uvx7W/4+fJQ8Rhta2ZEh2HMCJJ8eeEKBDln0atTfrOrPvXQ/u09042fa63oXMDdBo/dZ7ODGDxvDabk7ohAxOyIknR2dRWunmH+iFnZsd2n86STQ4VIoTbfWtXh8/yw3QeP3OjCrxuNODa0uGLbCz8wjQ0vF5tgHqTQBVczvHRkOg9sv759TDteRfRIrX768mCNDBtQ3vLAO7OJcA1V7/wcSzM7m7fampR1b+4fLy4vGbHa7CD03wXEnsAA+tjQN4HMh5fPNLB1jp9R9MHZH1Lfr3njtLWun9Om9A/XftGIeZARqvv1/Ly8s4vgfWlhjiH9iL8/jmlw6w0us/mOogvesL1PTDdIbud64nueLr3fkBGq+/W75ors4nxGvjCjwO5Ty++aUDrPT6D2YdYN/tz/N2I7AubGc0EaCJ6zU7BWiw/m75otopTR6WR2vjChIO5jy++aUDrPT6D6XptF71+qxG4m9246rsqsbbb+a4jwM0MbtUdoCm1l8v/52HnwzeKhatLbFFwH6cxze/dICVXv+h1AHWZuTNop+htPPbiQBNnW/cLUCD9fduByZMCdfGGVAcznl880sHWOn1H8y1s5fX9RrqRvG/eJ66Rh5PKbrbIXy8/t7AoXm4ttQWAftxHt/80gFWev0H415n7+Py7tVH6/hcH8anujGlBlHdKUDj9Y+uK17b6QzritNzHt/80gF2sPWPjIax3rFKdMJMj/SWPZzccjTAEh3pk8fLO3VjGll/updosDaO4HFA5xGgZ2tsiM3E7t/ASG87dWTvTzNGe3KpWzmTx8sHWv+0AOUIHgdEgM7acIBWF8PDAB0Y6W2H4eTeOqPyN+cgnTxKXd1OHi/vdCtnsH7/VtLUTniwNo7gcUAE6Knwe4PfLBIBmh7pbafh5NYZ9aB5pVeLbnbVdr23qX3g5O3xOwyoHK1/HandGpbpZgVrG7phH9gDAvRE+LdzN32JgvhKj/S223By1XjG979q+2H243FWA3S+ukzsgKajcocAjdZfBfhF1YO+7oea2rcM5q3eZTR8YAMC9DT4XXaqVPi9KEBTI73tOJycdxKhCXCnH2j7os62pWeC3iXEovXf2vrb5gbdmfy1nc7c1DhFBOhp8MftqPJxYCik/ulX3TN3GU5u7afdnBoftznU9QNd3P+6WeAEWPqKzYHW3825MhqgXEPCIRGgJ8E/gF+HwpOhseRqdn18x+HkKu9eVt0+H33VL7irFiwefe6szQnQxM1Be15/21fr46/j9cdrGx1RFNgRAXoK/L6M65/WaTocoO5IbzsOJwdgzMwDdOupxuuxIy+6nZO9zMr4rfeS8Uo80STmdy8fertLWfwr8M115aEATYz0RoACh3GqATqQCa/aE2YX3x//9enuvox+O1iJK5rE/FU/K+/jjJW3/GPUtvv4aID6I70RoMBhnGiADvQNv7GnXo39+hauo18PV+KIJjF3nrvDqTivx3p3WXkgQFMjvRGgwGHMPEAdE6Yar3rYVJeGv30WP5o5KnkVid0s6M1e4MhKoknM6+d+tWqenN2f2z8Det2udewiUjDSGwEKHMbJBOiUqcaX3XOqgH0y+OvbsNy9to7kQyuJJjG3Xcfqybm7oF5PnKXTQWm4G1PcbZQABfbvVAJ0ylTjzp5a2Psve1YHuxGwDcORlcSTmDs3a+/QH9G9m9t65YwGqH8HOAEKHMapBOiUqcadm07CMcyy5wWPAnRkJaNdDvPviPFWE5zVHWzVDQEKHN6JBOikqcbday3+QD3584J7h/BXoysZncR8hwANj+AJUGAuTiNAp0017oaGd4C7w5i61WWg+iLSZ20GD65kbBLz1S4zm3lH42MBOjjSGwEKHMZpBOi0qcbdPLsJUie7D5HdeX0/uvgd7HIOTWJe2WFq3YHx2OJzoIMjvRGgwGGcRIBOnGp8KNt2mxf8th2luB3LYjxAk5OYr5p+q5kZPpR+cYAOjvRGgAKHcRIBOnGq8aFs22lecDtmbm6PHA7QoUnMVzuNCT948tQ2pP8DEY/01m8ZAQocwCkE6NSpxgeybadZxar8fPyzNhOvhleyGpvE/O7FDt3oh/o/JQI0HumtXz8BChzAKQTo1KnGB7JtlxEhnanb2iklRg/h05OY3+5yG9Jg56hUgEYjvTUIUOAwTiFAp041PnCBfJdZxeJOSyNX4QcmMa/GEwmvKQE4BycQoJOnGk930dz1CP7K+feT0X6g6UnMl+EBNYBzcQIBOnmq8fRNQjvN6RAfsI/ciZScxPzLxQ47wABm7QQCdPJU4+nU3Gle8Hh/cySa40nMm/tOmVUXOFMnEKDTpxpPDpS007zgb21yjO7C+shoTNEk5tUvfbDTWPQAZmz+AbrFVOPd8JvuUJ07XoG+drsxPRhaSSuaxHy3LvwAZm7+Abp5qnGLqcRg8TvOC+7Mgt5dSo9WYusPJzH371wnS4EzM/8A3TzVuLOf99NouqJd5wW/e+FFYmolifU3N37a7xKgwDk6iQDdMNW4e6AcTZi5+7zg335Sv+RXtiRYibt+bxJzd/eVAAXOz/wDFABmigAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZCJAASATAQoAmQhQAMhEgAJAJgIUADIRoACQiQAFgEwEKABkIkABIBMBCgCZCFAAyESAAkAmAhQAMhGgAJCJAAWATAQoAGQiQAEgEwEKAJkIUADIRIACQCYCFAAyEaAAkIkABYBMBCgAZPr/mz+MWIaEayoAAAAASUVORK5CYII=" width="672" /></p>
+<pre class="r"><code># library with trainControl, train, RMSE, and MAE
+library(caret)</code></pre>
+<pre><code>## Loading required package: lattice</code></pre>
+<pre><code>## 
+## Attaching package: &#39;caret&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:purrr&#39;:
+## 
+##     lift</code></pre>
 <pre class="r"><code># Building a dataset with only the predictors from the test dataset
 test.x &lt;- test %&gt;% select(-Life.expectancy)
 # Making the prediction using the regression tree model
 tree.pred &lt;- predict(tree.model, test.x)
 
 # Checking the RMSE and MAE from the predicted model
-RMSE(tree.pred, test$Life.expectancy)</code></pre>
-<pre><code>## [1] 3.853341</code></pre>
-<pre class="r"><code>MAE(tree.pred, test$Life.expectancy)</code></pre>
-<pre><code>## [1] 2.840269</code></pre>
+rmse &lt;- RMSE(tree.pred, test$Life.expectancy)
+mae &lt;- MAE(tree.pred, test$Life.expectancy)
+ase &lt;- RMSE(tree.pred, test$Life.expectancy)^2
+tree.results &lt;- data.frame(RMSE = rmse, MAE = mae, ASE = ase)
+tree.results</code></pre>
+<pre><code>##       RMSE      MAE      ASE
+## 1 3.853341 2.840269 14.84824</code></pre>
+<pre class="r"><code># Setting seed to make model replicable due to the cross validation
+set.seed(1)
+
+# Creating a control variable to implement a 5 fold cross validation
+fitControl &lt;- trainControl(method = &quot;cv&quot;, number = 5)
+
+# Creating a knn model that will choose between 1 to 15 values for the &quot;k&quot; neighbors from which to take the mean.
+knn.model &lt;- train(Life.expectancy ~ Developed + Adult.Mortality + BMI + HIV.AIDS + thinness..1.19.years + thinness.5.9.years, 
+                    method = &quot;knn&quot;, tuneGrid = expand.grid(k = 1:15), data = train, trControl = fitControl)
+# Checking the model
+knn.model</code></pre>
+<pre><code>## k-Nearest Neighbors 
+## 
+## 2310 samples
+##    6 predictor
+## 
+## No pre-processing
+## Resampling: Cross-Validated (5 fold) 
+## Summary of sample sizes: 1848, 1849, 1848, 1848, 1847 
+## Resampling results across tuning parameters:
+## 
+##   k   RMSE      Rsquared   MAE     
+##    1  2.926589  0.9079577  1.792128
+##    2  2.795234  0.9146842  1.792653
+##    3  2.836619  0.9117669  1.833551
+##    4  2.912031  0.9068157  1.879550
+##    5  2.910040  0.9068234  1.914336
+##    6  2.931591  0.9054413  1.943576
+##    7  2.943802  0.9050372  1.956078
+##    8  2.997388  0.9017863  1.983148
+##    9  2.996092  0.9018471  1.995346
+##   10  2.995059  0.9019707  1.999633
+##   11  2.995857  0.9018594  2.013146
+##   12  3.008507  0.9010343  2.027285
+##   13  3.018936  0.9002746  2.031140
+##   14  3.030091  0.8994181  2.049556
+##   15  3.064968  0.8970868  2.073032
+## 
+## RMSE was used to select the optimal model using the smallest value.
+## The final value used for the model was k = 2.</code></pre>
+<pre class="r"><code># Creating a test.x1 data set with only the variable used in the creation of the model, without the response variable.
+test.x &lt;- test %&gt;% select(!Life.expectancy)
+test.x &lt;- test %&gt;% select(Developed, Adult.Mortality, BMI, HIV.AIDS, thinness..1.19.years, thinness.5.9.years)
+
+# Making predictions with the testing data
+knn.pred &lt;- predict(knn.model, test.x)
+
+RMSE(knn.pred, test$Life.expectancy)</code></pre>
+<pre><code>## [1] 2.330442</code></pre>
+<pre class="r"><code>MAE(knn.pred, test$Life.expectancy)</code></pre>
+<pre><code>## [1] 1.56064</code></pre>
+<pre class="r"><code># Retrieving the RMSE, Rsquared, MAE for each of the k values
+knn.Results &lt;- knn.model$results %&gt;% select(k, RMSE, Rsquared, MAE)
+
+# Creating the ASE by squaring the RMSE
+knn.Results$ASE &lt;- knn.Results$RMSE^2
+
+# Checking the results table
+knn.Results</code></pre>
+<pre><code>##     k     RMSE  Rsquared      MAE      ASE
+## 1   1 2.926589 0.9079577 1.792128 8.564926
+## 2   2 2.795234 0.9146842 1.792653 7.813333
+## 3   3 2.836619 0.9117669 1.833551 8.046408
+## 4   4 2.912031 0.9068157 1.879550 8.479923
+## 5   5 2.910040 0.9068234 1.914336 8.468332
+## 6   6 2.931591 0.9054413 1.943576 8.594225
+## 7   7 2.943802 0.9050372 1.956078 8.665967
+## 8   8 2.997388 0.9017863 1.983148 8.984335
+## 9   9 2.996092 0.9018471 1.995346 8.976570
+## 10 10 2.995059 0.9019707 1.999633 8.970378
+## 11 11 2.995857 0.9018594 2.013146 8.975158
+## 12 12 3.008507 0.9010343 2.027285 9.051115
+## 13 13 3.018936 0.9002746 2.031140 9.113973
+## 14 14 3.030091 0.8994181 2.049556 9.181449
+## 15 15 3.064968 0.8970868 2.073032 9.394031</code></pre>
+<pre class="r"><code># Creating a dataframe with the Actual and Predicted values for the testing set
+res &lt;- data.frame(Actual = test$Life.expectancy, Predicted = knn.pred)
+
+# Calculating the residuals by subtracting the Predicted from the Actual
+res$Residuals &lt;- res$Actual - res$Predicted
+
+# Squaring the Residual values
+res$Squared.Residuals &lt;- res$Residuals^2
+
+# Taking the Average of the Squared Residuals
+ASE &lt;- mean(res$Squared.Residuals)
+
+# Checking the ASE
+ASE</code></pre>
+<pre><code>## [1] 5.430962</code></pre>
 </div>
 </div>
 
